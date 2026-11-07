@@ -1,0 +1,282 @@
+/* ステージエディタ（PC向け）。ゲームの style.css の上に重ねる */
+body.editor {
+  touch-action: auto;
+  -webkit-user-select: auto;
+  user-select: auto;
+  font-size: 13px;
+  background: #0d0b16;
+}
+body.editor button {
+  padding: 5px 10px;
+  font-size: 13px;
+}
+body.editor button.primary {
+  background: #ff3a50;
+  border-color: #ff8090;
+  font-weight: bold;
+}
+body.editor button.danger {
+  border-color: #a03040;
+  color: #ff9aa8;
+}
+body.editor button.on {
+  background: #4a3a8a;
+  border-color: #b0a0ff;
+}
+body.editor select,
+body.editor input {
+  padding: 3px 6px;
+}
+
+#ed-top {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  background: #16122a;
+  border-bottom: 2px solid #2e2850;
+  overflow-x: auto;
+  white-space: nowrap;
+  z-index: 3;
+}
+.ed-logo {
+  font-size: 15px;
+  letter-spacing: 0.05em;
+}
+.ed-logo span {
+  color: #ff3a50;
+}
+.sep {
+  width: 1px;
+  height: 24px;
+  background: #3a3460;
+  margin: 0 4px;
+}
+.badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #333;
+  font-weight: bold;
+}
+.badge.draft {
+  background: #8a6a00;
+}
+.badge.repo {
+  background: #0a6a3a;
+}
+.badge.gen {
+  background: #3a3a50;
+}
+.chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.ed-link {
+  color: #a0a0ff;
+  margin-left: auto;
+}
+
+#ed-body {
+  position: fixed;
+  top: 46px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+}
+#ed-palette {
+  width: 132px;
+  flex: none;
+  overflow-y: auto;
+  padding: 8px;
+  background: #120f22;
+  border-right: 2px solid #2e2850;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+#ed-palette h4 {
+  margin: 8px 0 2px;
+  font-size: 11px;
+  opacity: 0.6;
+}
+#ed-palette button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+#ed-palette button canvas {
+  width: 20px;
+  height: 20px;
+  image-rendering: pixelated;
+  flex: none;
+}
+#ed-palette kbd {
+  margin-left: auto;
+  opacity: 0.5;
+  font-size: 10px;
+}
+
+#ed-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+#ed-scroll {
+  flex: 1;
+  overflow: auto;
+  background: #000;
+}
+#ed-canvas {
+  display: block;
+  image-rendering: pixelated;
+  cursor: crosshair;
+  touch-action: none;
+}
+#ed-status {
+  height: 26px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 0 10px;
+  background: #16122a;
+  border-top: 1px solid #2e2850;
+  white-space: nowrap;
+  overflow: hidden;
+}
+#ed-msg {
+  color: #ffd060;
+}
+
+#ed-side {
+  width: 260px;
+  flex: none;
+  overflow-y: auto;
+  padding: 8px 10px;
+  background: #120f22;
+  border-left: 2px solid #2e2850;
+}
+#ed-side section {
+  margin-bottom: 14px;
+}
+#ed-side h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: #c8c0ff;
+}
+.btns {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.btns.row {
+  flex-direction: row;
+}
+.hint {
+  font-size: 11px;
+  opacity: 0.75;
+  margin: 0;
+  padding-left: 1.2em;
+  line-height: 1.6;
+}
+p.hint {
+  padding-left: 0;
+}
+#ed-errors .err {
+  color: #ff8090;
+  font-size: 12px;
+}
+#ed-errors .ok {
+  color: #70e0a0;
+  font-size: 12px;
+}
+#ed-bot-result {
+  margin: 6px 0;
+  font-size: 12px;
+}
+#ed-props label {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+#ed-props input,
+#ed-props select {
+  width: 100%;
+}
+#ed-props small {
+  grid-column: 2;
+  opacity: 0.6;
+  font-size: 10px;
+  margin-top: -4px;
+}
+
+/* テストプレイ */
+#ed-playlayer {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 20;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#ed-play-hud {
+  position: absolute;
+  top: calc(var(--sat) + 6px);
+  left: calc(var(--sal) + 10px);
+  right: calc(var(--sar) + 10px);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: bold;
+  text-shadow: 0 1px 0 #000;
+  z-index: 5;
+}
+
+/* 書き出し */
+#ed-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ed-modal-box {
+  background: #16122a;
+  border: 2px solid #4a4466;
+  border-radius: 10px;
+  padding: 16px 20px;
+  width: min(760px, 94vw);
+  max-height: 92vh;
+  overflow: auto;
+}
+.ed-modal-box h2 {
+  margin: 0 0 8px;
+}
+.ed-modal-box code {
+  background: #000;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+#ed-export-text {
+  width: 100%;
+  height: 260px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11px;
+  margin: 8px 0;
+  white-space: pre;
+}

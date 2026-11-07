@@ -9,6 +9,11 @@
 import { BOSS_STAGE, ROWS, T } from './constants';
 import type { EntSpec, Level } from './level';
 import { Rng, hashSeed } from './rng';
+import customData from './stage-data.json';
+import { checkDef, defToLevel, type StageDef } from './stageFormat';
+
+/** ステージエディタで作った手作りステージ（面番号 → データ）。自動生成より優先される */
+export const CUSTOM_STAGES = customData as unknown as Record<string, StageDef>;
 
 const G = 14; // 地面の上面の行
 
@@ -345,10 +350,23 @@ const cache = new Map<number, Level>();
 export function getStage(stage: number): Level {
   let L = cache.get(stage);
   if (!L) {
-    L = stage === BOSS_STAGE ? bossStage() : buildStage(stage);
+    const def = CUSTOM_STAGES[String(stage)];
+    if (stage === BOSS_STAGE) L = bossStage();
+    else if (def && checkDef(def).length === 0) L = defToLevel(stage, worldOf(stage), def);
+    else L = buildStage(stage);
     cache.set(stage, L);
   }
   return L;
+}
+
+/** 自動生成のステージ（手作りがあっても無視して生成） */
+export function generatedStage(stage: number): Level {
+  return stage === BOSS_STAGE ? bossStage() : buildStage(stage);
+}
+
+export function isCustomStage(stage: number): boolean {
+  const def = CUSTOM_STAGES[String(stage)];
+  return !!def && checkDef(def).length === 0;
 }
 
 function finish(g: Grid, stage: number, startX: number, boss: boolean): Level {
@@ -405,4 +423,26 @@ function bossStage(): Level {
   }
   g.ents.push({ k: 'boss', x: 22, y: G - 1 });
   return finish(g, BOSS_STAGE, 3, true);
+}
+
+/**
+ * 80〜100面のデータのハッシュ。ゲームとサーバーでステージが食い違っていないかの確認に使う
+ * （手作りステージを変えたのにサーバーを更新し忘れると、正しいクリアが検証失敗になるため）
+ */
+export function stagesVersion(): string {
+  let h = 0x811c9dc5;
+  const mix = (n: number) => {
+    h ^= n & 0xff;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  };
+  for (let s = 80; s <= BOSS_STAGE; s++) {
+    const L = getStage(s);
+    mix(L.w);
+    mix(L.startX);
+    mix(L.startY);
+    for (let i = 0; i < L.tiles.length; i++) mix(L.tiles[i]);
+    const e = JSON.stringify(L.ents);
+    for (let i = 0; i < e.length; i++) mix(e.charCodeAt(i));
+  }
+  return h.toString(16).padStart(8, '0');
 }

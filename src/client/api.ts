@@ -1,3 +1,4 @@
+import { stagesVersion } from '../shared/stages';
 // 状態API（Cloudflare Workers）との通信
 export interface WorldState {
   ended: boolean;
@@ -45,7 +46,7 @@ export function getState(): Promise<WorldState> {
 }
 
 export function startRun(name: string): Promise<{ sessionId: string }> {
-  return call('/api/run/start', { name });
+  return call('/api/run/start', { name, ver: stagesVersion() });
 }
 
 export interface StageResult {

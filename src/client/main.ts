@@ -29,6 +29,7 @@ const ERR_TEXT: Record<string, string> = {
   world_ended: '世界はすでに終わっています',
   bad_name: 'その名前は使えません',
   rate_limited: 'アクセスが集中しています',
+  version_mismatch: 'ゲームのステージがサーバーと一致しません（ページを再読込してください）',
 };
 const errText = (e: unknown) => (e instanceof ApiError ? (ERR_TEXT[e.code] ?? `エラー (${e.code})`) : '不明なエラー');
 

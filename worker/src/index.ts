@@ -10,6 +10,7 @@
 import { BOSS_STAGE, FINAL_START } from '../../src/shared/constants';
 import { validateName } from '../../src/shared/name';
 import { decodeInputs, verifyStage } from '../../src/shared/replay';
+import { stagesVersion } from '../../src/shared/stages';
 
 export interface Env {
   DB: D1Database;
@@ -109,7 +110,8 @@ async function body<T>(req: Request): Promise<T | null> {
 // ---------------- ハンドラ ----------------
 
 async function startRun(req: Request, env: Env): Promise<Response> {
-  const b = await body<{ name?: string }>(req);
+  const b = await body<{ name?: string; ver?: string }>(req);
+  if (b?.ver !== stagesVersion()) return fail(req, env, 'version_mismatch', 409);
   const name = validateName(b?.name ?? '');
   if (name === null) return fail(req, env, 'bad_name');
   const w = await readWorld(env, true);
@@ -231,7 +233,7 @@ export default {
       switch (`${req.method} ${url.pathname}`) {
         case 'GET /':
         case 'GET /api/state':
-          return json(req, env, worldJson(await readWorld(env), env));
+          return json(req, env, { ...worldJson(await readWorld(env), env), stagesVersion: stagesVersion() });
         case 'POST /api/run/start':
           return await startRun(req, env);
         case 'POST /api/run/stage':

@@ -3,6 +3,7 @@
 // ※ wrangler dev は --var MIN_TIME_FACTOR:0 で起動する（実時間チェックを省略）
 // ボットで 80〜100面の正しい入力ログを作り、サーバーで検証させる。
 import { encodeInputs } from '../src/shared/replay';
+import { stagesVersion } from '../src/shared/stages';
 import { solve } from './solve';
 
 const API = process.argv[2] ?? 'http://localhost:8787';
@@ -23,7 +24,7 @@ console.log('\nsolutions ready');
 
 // 不正: 順番飛ばし・偽ログ
 {
-  const { json } = await post('/api/run/start', { name: 'cheater' });
+  const { json } = await post('/api/run/start', { name: 'cheater', ver: stagesVersion() });
   const sid = json.sessionId as string;
   console.log('skip stage ->', (await post('/api/run/stage', { sessionId: sid, stage: 81, log: logs[81] })).json);
   console.log('fake log ->', (await post('/api/run/stage', { sessionId: sid, stage: 80, log: 'AAAA' })).json);
@@ -31,7 +32,7 @@ console.log('\nsolutions ready');
 }
 
 async function fullRun(name: string) {
-  const { json } = await post('/api/run/start', { name });
+  const { json } = await post('/api/run/start', { name, ver: stagesVersion() });
   const sid = json.sessionId as string;
   let last: unknown = null;
   for (let st = 80; st <= 100; st++) {
