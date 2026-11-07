@@ -1,9 +1,9 @@
-# main ブランチに push すると、ゲームをビルドして GitHub Pages に公開する
+# 下記ブランチに push すると、ゲームをビルドして GitHub Pages に公開する
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/tender-knuth-rokjyn]
   workflow_dispatch:
 
 permissions:
