@@ -1,0 +1,21 @@
+# Cloudflare Workers 設定（詳しくは docs/CLOUDFLARE.md）
+name = "world-end-api"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# 無料プランのまま運用する（Workers Paid にしない限り課金は発生しない）
+[observability]
+enabled = true
+
+[vars]
+# "test" = クリアを検証・記録するが世界は終わらない（テストプレイ用）
+# "live" = 最初に承認された1名で世界が終了する（本番）
+MODE = "test"
+# ゲームを置くサイトのオリジン（カンマ区切り）。GitHub Pages なら https://ユーザー名.github.io
+ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://cadmium2525.github.io"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "world-end"
+# `npx wrangler d1 create world-end` の結果に表示される database_id に書き換える
+database_id = "00000000-0000-0000-0000-000000000000"

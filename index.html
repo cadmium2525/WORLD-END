@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="世界で最初に100面のボスを倒した1人が、全プレイヤーのゲームを終わらせる。" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <title>WORLD END</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="stage"><canvas id="game"></canvas></div>
+
+      <div id="hud" class="hidden">
+        <div class="hud-left">
+          <span id="hud-stage">1-1</span>
+          <span id="hud-deaths">☠ 0</span>
+        </div>
+        <div id="hud-nosave" class="hidden">ノーセーブ中 <small id="hud-run"></small></div>
+        <button id="btn-pause" aria-label="一時停止">II</button>
+      </div>
+
+      <div id="banner" class="hidden"></div>
+      <div id="toast" class="hidden"></div>
+
+      <div id="touch" class="hidden">
+        <div id="dpad"><span class="arrow l">◀</span><span class="arrow r">▶</span></div>
+        <div id="jump"><span>JUMP</span></div>
+      </div>
+
+      <!-- タイトル -->
+      <section id="scr-title" class="screen">
+        <div class="title-wrap">
+          <div class="title-left">
+            <h1 class="logo">WORLD<br />END</h1>
+            <p class="tagline">世界で最初に100面のボスを倒した1人が、<br />全プレイヤーのゲームを終わらせる。</p>
+            <div id="world-status" class="status">確認中…</div>
+            <dl class="info">
+              <dt>最終セーブ</dt><dd id="info-save">-</dd>
+              <dt>累計死亡</dt><dd id="info-deaths">0</dd>
+            </dl>
+          </div>
+          <div class="title-right">
+            <label class="name">プレイヤー名（任意・12文字まで）
+              <input id="name" maxlength="24" placeholder="名もなき挑戦者" autocomplete="off" />
+            </label>
+            <p class="note">※ 世界を終わらせた場合、この名前が全プレイヤーに公開されます。</p>
+            <button id="btn-continue" class="big">CONTINUE</button>
+            <button id="btn-new">はじめから</button>
+            <div class="row">
+              <button id="btn-howto">操作説明</button>
+              <button id="btn-settings">設定</button>
+            </div>
+            <div id="debug-box" class="debug hidden">
+              <div>テスト用：面を選んで開始</div>
+              <div class="row">
+                <input id="debug-stage" type="number" min="1" max="100" value="1" />
+                <button id="btn-debug-go">開始</button>
+                <label><input id="debug-inv" type="checkbox" /> 無敵</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 操作説明 -->
+      <section id="scr-howto" class="screen hidden">
+        <div class="panel">
+          <h2>遊び方</h2>
+          <ul>
+            <li>ゴールの旗に触れると次の面へ。トゲ・敵の横・弾・穴は<strong>即死</strong>。</li>
+            <li>ジャンプは<strong>押す長さで高さが変わります</strong>。敵は上から踏めます。</li>
+            <li>1〜79面はクリアごとに自動セーブ。死んでもその面の最初から。</li>
+            <li><strong>80面からはノーセーブ。</strong>80〜100面のどこで死んでも、再読込しても、80面からやり直し。</li>
+            <li>100面のボスは、攻撃のあとに<strong>目を回して頭が光る</strong>。その時だけ踏めます。</li>
+            <li>世界で最初にサーバーに承認された1人が勝者となり、世界は終わります。</li>
+          </ul>
+          <h3>操作</h3>
+          <table>
+            <tr><th>スマホ</th><td>左下：左右移動 ／ 右下：ジャンプ（両手の親指で）</td></tr>
+            <tr><th>PC</th><td>← → / A D：移動　Space / Z / ↑：ジャンプ　R：やり直し　Esc / P：一時停止</td></tr>
+          </table>
+          <button class="back">もどる</button>
+        </div>
+      </section>
+
+      <!-- 設定 -->
+      <section id="scr-settings" class="screen hidden">
+        <div class="panel">
+          <h2>設定</h2>
+          <div class="settings-grid">
+            <label>ボタンの大きさ <input id="set-scale" type="range" min="0.6" max="1.6" step="0.05" /></label>
+            <label>ボタンの濃さ <input id="set-opacity" type="range" min="0.15" max="1" step="0.05" /></label>
+            <label>ボタン位置（横） <input id="set-insetx" type="range" min="0" max="160" step="2" /></label>
+            <label>ボタン位置（縦） <input id="set-insety" type="range" min="0" max="140" step="2" /></label>
+            <label>効果音 <input id="set-sfx" type="range" min="0" max="1" step="0.05" /></label>
+            <label>BGM <input id="set-bgm" type="range" min="0" max="1" step="0.05" /></label>
+            <label>タッチボタン
+              <select id="set-touch">
+                <option value="auto">自動</option>
+                <option value="on">常に表示</option>
+                <option value="off">表示しない</option>
+              </select>
+            </label>
+          </div>
+          <p class="note">設定中は画面下にボタンが表示されます。</p>
+          <div class="row">
+            <button id="btn-set-reset">初期値に戻す</button>
+            <button class="back">もどる</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 一時停止 -->
+      <section id="scr-pause" class="screen hidden">
+        <div class="panel small">
+          <h2>一時停止</h2>
+          <p id="pause-warn" class="warn hidden">ノーセーブ区間です。タイトルに戻ると80面からやり直しになります。長時間の一時停止は公式記録の対象外になります（1面あたり約45秒まで）。</p>
+          <button id="btn-resume" class="big">再開</button>
+          <button id="btn-retry">この面をやり直す（R）</button>
+          <button id="btn-quit">タイトルへ</button>
+          <button id="btn-debug-skip" class="hidden">（テスト）この面をスキップ</button>
+        </div>
+      </section>
+
+      <!-- 結果 -->
+      <section id="scr-result" class="screen hidden">
+        <div class="panel">
+          <h2 id="result-title"></h2>
+          <p id="result-body"></p>
+          <button id="btn-result-ok" class="big">タイトルへ</button>
+        </div>
+      </section>
+
+      <!-- 世界終了 -->
+      <section id="scr-end" class="screen hidden">
+        <div class="end-wrap">
+          <h1 class="end-logo">WORLD END</h1>
+          <p class="end-sub">この世界は終わりました。</p>
+          <p class="end-winner">世界を終わらせた者<br /><strong id="end-name"></strong></p>
+          <p class="end-date" id="end-date"></p>
+          <p class="end-thanks">遊んでくれたすべての挑戦者に感謝を。</p>
+        </div>
+      </section>
+
+      <div id="rotate">
+        <div class="phone"></div>
+        <p>端末を横向きにしてください</p>
+      </div>
+    </div>
+    <script type="module" src="/src/client/main.ts"></script>
+  </body>
+</html>

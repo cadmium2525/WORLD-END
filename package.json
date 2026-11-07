@@ -1,0 +1,22 @@
+{
+  "name": "world-end",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "solve": "tsx tools/solve.ts",
+    "preview-stage": "tsx tools/preview.ts",
+    "verify-stages": "tsx tools/solve.ts 1 100",
+    "e2e": "tsx tools/e2e.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vite": "7.3.6"
+  }
+}
