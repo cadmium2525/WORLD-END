@@ -13,7 +13,8 @@ interface Node {
 }
 
 function score(s: Sim): number {
-  let v = s.p.x;
+  // 右へ進むほど高評価。登る地形のため、高い位置も少しだけ評価する
+  let v = s.p.x - (s.p.y >> 1);
   if (s.switchOn) v += 6 * TS;
   if (s.boss) {
     v = (s.boss.maxHp - s.boss.hp) * 1e7;
