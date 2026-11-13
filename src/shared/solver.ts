@@ -203,12 +203,14 @@ function reachable(L: Level): Uint8Array {
       const t = L.tiles[y * L.w + x];
       if (t === T.SPRING) mark(x, y - 8, y);
       else if (t === T.WIND_U) mark(x, y - 3, y);
-      else if (floorLike(t) || t === T.ONEWAY) mark(x, y - 3, y);
+      else if ((floorLike(t) || t === T.ONEWAY) && y > 0 && passable(L.tiles[(y - 1) * L.w + x])) mark(x, y - 3, y); // 上に立てる面だけ
       if (t === T.GRAV_UP) grav = true;
     }
   }
   if (grav) {
-    for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) if (floorLike(L.tiles[y * L.w + x])) mark(x, y, y + 7);
+    for (let y = 0; y < L.h - 1; y++) {
+      for (let x = 0; x < L.w; x++) if (floorLike(L.tiles[y * L.w + x]) && passable(L.tiles[(y + 1) * L.w + x])) mark(x, y, y + 7);
+    }
   }
   for (const e of L.ents) {
     if (e.k === 'orb') mark(e.x, e.y - 4, e.y + 3);

@@ -872,7 +872,7 @@ const tWind: Band = (t, d, r) => {
   const h = 8 + Math.min(d, 2) * 2;
   const right = t.x + 4 < t.W - 1;
   const cx = right ? t.x + 2 : t.x - 3; // 気流の左端
-  const u0 = t.u;
+  const u0 = Math.max(2, t.u - 4); // 足場より下からも吹き上げる（落ちても拾われる）
   const u1 = t.u + h; // 気流の最上段
   for (let u = u0; u <= u1; u++) {
     t.set(cx, u, T.WIND_U);
@@ -949,7 +949,7 @@ const tOrb: Band = (t, d, r) => {
     const ox = t.clampX(t.x + dir * 2, 1);
     t.ent({ k: 'orb', x: ox, y: 0 }, t.u + 3);
     const nx = t.clampX(dir > 0 ? t.x + 3 : t.x - 6, 4);
-    const nu = t.u + 6;
+    const nu = t.u + 5;
     t.ledge(nx, nx + 3, nu - 1);
     t.u = nu;
     t.x = nx + 1 + (dir > 0 ? 1 : 0);
@@ -1109,7 +1109,7 @@ export const DESIGN: StageDesign[] = [
   D('scroll', 'wall', 'orbChain.1 windTail.1 orbGap.1 sawPit.1 crumbleRun.1', '深淵の逃走', { chase: wall(210) }),
   D('dark', 'orb', 'orbWall.2 laserHop.1 orbChain.2 spikeHop.2 crumbleRun.2 gapRun.2', '真っ暗なオーブの道', { dark: true }),
   D('precise', 'saw', 'orbChain.2 sawOrbit.1', 'オーブとノコギリ'),
-  D('climb', 'orb', 'tOrb.1 tCrumble.2 tOrb.2 tSpring.1 tZig.2', '暗闇の溶岩の塔', { chase: lava(130), dark: true }),
+  D('climb', 'orb', 'tOrb.1 tCrumble.2 tOrb.2 tSpring.1 tZig.2', '暗闇の溶岩の塔', { chase: lava(110), dark: true }),
 
   // ---------- ワールド15 終焉（鍵と扉・重力反転＋すべての複合）----------
   D('puzzle', 'key', 'keyHigh.0 gapRun.0', '鍵と扉の導入'),
