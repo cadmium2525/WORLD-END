@@ -137,7 +137,7 @@ const springWall: Beat = (g, d) => {
 const springPit: Beat = (g, d) => {
   g.flat(3);
   g.surface(g.add(), T.SPRING);
-  g.pit(5);
+  g.pit(4);
   if (d >= 1) {
     // 小さな足場をはさんで、もう一度バネ
     g.flat(1);
@@ -259,11 +259,10 @@ const cloudHop: Beat = (g, d, r) => {
   const G = g.G;
   g.flat(2);
   const n = 3 + Math.min(d, 2);
-  const pat = [G - 2, G - 4, G - 3, G - 5, G - 2];
-  const o = r.int(2);
+  const pat = r.chance(50) ? [G - 2, G - 4, G - 3, G - 5, G - 3] : [G - 1, G - 3, G - 5, G - 3, G - 2];
   for (let i = 0; i < n; i++) {
     g.pit(2 + (d >= 2 && i % 2 ? 1 : 0));
-    const row = pat[(i + o) % pat.length];
+    const row = pat[i % pat.length];
     for (let k = 0; k < 3; k++) g.set(g.add(null), row, T.ONEWAY);
   }
   g.pit(2);
@@ -495,8 +494,8 @@ const orbChain: Beat = (g, d) => {
   const G = g.G;
   g.flat(3);
   const x0 = g.x;
-  const n = 2 + Math.min(d, 2);
-  g.pit(3 + n * 4);
+  const n = 2 + Math.min(d, 1);
+  g.pit(6 + (n - 1) * 4);
   for (let i = 0; i < n; i++) g.ents.push({ k: 'orb', x: x0 + 2 + i * 4, y: G - 4 });
   g.flat(3);
 };
@@ -810,14 +809,17 @@ class Tower {
 
 type Band = (t: Tower, d: number, r: Rng) => void;
 
-/** 次の足場の左端を、今の位置から左右に振って決める */
+/**
+ * 次の足場の左端を決める。足場の中心を今の位置（t.x）から min〜max タイル左右にずらす
+ * （壁に当たるなら反対側へ）。足場どうしの間は最大でも数タイルに収まる
+ */
 function stepX(t: Tower, w: number, r: Rng, min = 3, max = 5): number {
-  const dir = t.x + 2 > t.W / 2 ? -1 : 1;
-  const flip = r.chance(25) ? -dir : dir;
-  let nx = t.x + flip * r.range(min, max) - (flip < 0 ? w - 1 : 0);
-  nx = t.clampX(nx, w);
-  if (Math.abs(nx - t.x) < 2 && Math.abs(nx + w - 1 - t.x) < 2) nx = t.clampX(t.x + (dir > 0 ? 3 : -2 - w), w);
-  return nx;
+  let dir = t.x > t.W / 2 ? -1 : 1;
+  if (r.chance(25)) dir = -dir;
+  const k = r.range(min, max);
+  let c = t.x + dir * k;
+  if (c - (w >> 1) < 1 || c - (w >> 1) + w - 1 > t.W - 2) c = t.x - dir * k;
+  return t.clampX(c - (w >> 1), w);
 }
 
 /** すり抜け床（雲）のジグザグ */
@@ -897,7 +899,7 @@ const tIce: Band = (t, d, r) => {
 const tConv: Band = (t, d, r) => {
   const n = 3 + Math.min(d, 2);
   for (let i = 0; i < n; i++) {
-    const nx = stepX(t, 4, r, 3, 4);
+    const nx = stepX(t, 4, r, 4, 5);
     const nu = t.u + 2;
     t.ledge(nx, nx + 3, nu - 1, nx > t.x ? T.CONV_L : T.CONV_R);
     t.u = nu;

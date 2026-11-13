@@ -213,7 +213,8 @@ export class Renderer {
             g.fillStyle = P.dirtDark;
             g.fillRect(x + (hv % 12) + 1, y + ((hv >> 4) % 12) + 1, 2, 2);
             g.fillRect(x + ((hv >> 8) % 12) + 2, y + ((hv >> 12) % 12) + 2, 1, 1);
-            if (above !== T.SOLID && above !== T.BRICK) {
+            const covered = above === T.SPRING || above === T.ICE || above === T.CONV_L || above === T.CONV_R;
+            if (above !== T.SOLID && above !== T.BRICK && !covered) {
               g.fillStyle = P.top;
               g.fillRect(x, y, TILE, 4);
               g.fillStyle = P.dirtDark;
@@ -610,7 +611,7 @@ export class Renderer {
         if (e.kind === E_ORB) {
           // 復活待ちのオーブ（うっすら）
           ctx.strokeStyle = 'rgba(160,255,240,0.3)';
-          ctx.strokeRect(Math.round(ex) + 2.5, Math.round(ey) + 2.5, 7, 7);
+          ctx.strokeRect(Math.round(ex) + 6.5, Math.round(ey) + 6.5, 7, 7);
         }
         continue;
       } else if (e.kind === E_WALKER) {
@@ -631,8 +632,8 @@ export class Renderer {
         }
       } else if (e.kind === E_ORB) {
         const pulse = Math.floor(frameTime / 8) % 2;
-        const X = Math.round(ex);
-        const Y = Math.round(ey) + (Math.floor(frameTime / 16) % 2);
+        const X = Math.round(ex) + 4;
+        const Y = Math.round(ey) + 4 + (Math.floor(frameTime / 16) % 2);
         ctx.fillStyle = 'rgba(120,255,230,0.35)';
         ctx.fillRect(X - 2, Y - 2, 16, 16);
         ctx.fillStyle = '#40e0c8';
@@ -934,7 +935,7 @@ export class Renderer {
     const g = dc.getContext('2d')!;
     g.globalCompositeOperation = 'source-over';
     g.clearRect(0, 0, W, VH);
-    g.fillStyle = 'rgba(2,4,8,0.93)';
+    g.fillStyle = 'rgba(2,4,8,0.9)';
     g.fillRect(0, 0, W, VH);
     g.globalCompositeOperation = 'destination-out';
     const hole = (x: number, y: number, r: number, a = 1) => {

@@ -381,11 +381,12 @@ export class Sim {
           e.phase = s.phase;
           break;
         case 'orb':
+          // 当たり判定はタイルより少し大きい（20px 四方。見た目は 12px）
           e.kind = E_ORB;
-          e.w = px(12);
-          e.h = px(12);
-          e.x = s.x * TS + px(2);
-          e.y = s.y * TS + px(2);
+          e.w = px(20);
+          e.h = px(20);
+          e.x = s.x * TS - px(2);
+          e.y = s.y * TS - px(2);
           break;
         case 'key':
           e.kind = E_KEY;

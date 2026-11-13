@@ -1,6 +1,7 @@
 // 自動攻略ボットで面がクリア可能かを検証する開発ツール。
 // 使い方: npm run solve -- 1 200     （1〜200面を検証）
 //         npm run solve -- 37        （37面だけ）
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { TS } from '../src/shared/constants';
 import { decodeInputs, encodeInputs, verifyStage } from '../src/shared/replay';
 import { solveLevel } from '../src/shared/solver';
@@ -34,6 +35,7 @@ if (isMain) {
   const a = Number(process.argv[2] ?? 1);
   const b = Number(process.argv[3] ?? a);
   let fail = 0;
+  const logs: Record<string, string> = {};
   const segFrames = new Map<string, number>();
   let maxVerify = 0;
   for (let st = a; st <= b; st++) {
@@ -58,6 +60,7 @@ if (isMain) {
       const seg = st <= 100 ? '80-100' : `${101 + Math.floor((st - 101) / 20) * 20}-${120 + Math.floor((st - 101) / 20) * 20}`;
       segFrames.set(seg, (segFrames.get(seg) ?? 0) + sol.length);
     }
+    logs[st] = enc;
     const cm = chaseMargin(st, dec);
     console.log(
       `stage ${st}: ok ${(sol.length / 60).toFixed(1)}s w=${L.w} h=${L.h} log=${enc.length}B verify=${v.ok} ${vt.toFixed(2)}ms solve=${ms}ms${cm !== null ? ` chase-margin=${cm.toFixed(1)}s` : ''}`,
@@ -66,6 +69,12 @@ if (isMain) {
   }
   for (const [seg, f] of segFrames) console.log(`${seg} bot total: ${(f / 60).toFixed(1)}s (${(f / 3600).toFixed(1)}分)`);
   console.log(`verify max: ${maxVerify.toFixed(2)}ms`);
+  // SOLVE_OUT=ファイル名 で解答（入力ログ）を JSON に追記保存（tools/verify-time.ts で使う）
+  const outFile = process.env.SOLVE_OUT;
+  if (outFile) {
+    const old = existsSync(outFile) ? (JSON.parse(readFileSync(outFile, 'utf8')) as Record<string, string>) : {};
+    writeFileSync(outFile, JSON.stringify({ ...old, ...logs }));
+  }
   console.log(fail ? `${fail} FAILED` : 'ALL OK');
   process.exitCode = fail ? 1 : 0;
 }
