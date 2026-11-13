@@ -57,7 +57,7 @@ export const CHAR_TO_TILE: Record<string, number> = {
 export const TILE_TO_CHAR: Record<number, string> = {};
 for (const [c, t] of Object.entries(CHAR_TO_TILE)) if (c !== 'P' && TILE_TO_CHAR[t] === undefined) TILE_TO_CHAR[t] = c;
 
-export const MIN_WIDTH = 30;
+export const MIN_WIDTH = 20;
 export const MAX_WIDTH = 400;
 export const MAX_HEIGHT = 120;
 

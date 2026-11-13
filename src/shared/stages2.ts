@@ -496,7 +496,7 @@ const orbChain: Beat = (g, d) => {
   g.flat(3);
   const x0 = g.x;
   const n = 2 + Math.min(d, 2);
-  g.pit(4 + n * 4);
+  g.pit(3 + n * 4);
   for (let i = 0; i < n; i++) g.ents.push({ k: 'orb', x: x0 + 2 + i * 4, y: G - 4 });
   g.flat(3);
 };
@@ -826,7 +826,7 @@ const tZig: Band = (t, d, r) => {
   const w = d >= 2 ? 3 : 4;
   for (let i = 0; i < n; i++) {
     const nx = stepX(t, w, r);
-    const nu = t.u + (d >= 1 ? 3 : 2);
+    const nu = t.u + (d >= 2 ? 3 : 2);
     t.ledge(nx, nx + w - 1, nu - 1);
     t.u = nu;
     t.x = nx + (w >> 1);
@@ -910,7 +910,7 @@ const tSaw: Band = (t, d, r) => {
   const n = 3 + Math.min(d, 1);
   for (let i = 0; i < n; i++) {
     const nx = stepX(t, 4, r);
-    const nu = t.u + 3;
+    const nu = t.u + (d >= 2 ? 3 : 2);
     t.ledge(nx, nx + 3, nu - 1);
     if (i % 2 === 1 || d >= 2) t.ent({ k: 'saw', x: 2, y: 0, tw: t.W - 5, th: 0, speed: 112 + d * 16, phase: r.int(600) }, nu + 1);
     t.u = nu;
@@ -923,7 +923,7 @@ const tLaser: Band = (t, d, r) => {
   const n = 3 + Math.min(d, 1);
   for (let i = 0; i < n; i++) {
     const nx = stepX(t, 4, r);
-    const nu = t.u + 3;
+    const nu = t.u + (d >= 2 ? 3 : 2);
     t.ledge(nx, nx + 3, nu - 1);
     if (i % 2 === 0) t.ent({ k: 'laser', x: 0, y: 0, dx: 1, dy: 0, len: t.W - 2, period: 120, on: 40, phase: i * 30 + r.int(20) }, nu - 2);
     t.u = nu;
@@ -977,7 +977,7 @@ const tIcicle: Band = (t, d, r) => {
   const n = 3 + Math.min(d, 1);
   for (let i = 0; i < n; i++) {
     const nx = stepX(t, 4, r);
-    const nu = t.u + 3;
+    const nu = t.u + (d >= 2 ? 3 : 2);
     t.ledge(nx, nx + 3, nu - 1, T.SOLID);
     t.set(nx + 1 + (i % 2), nu + 4, T.SOLID);
     t.set(nx + 1 + (i % 2), nu + 3, T.ICICLE);

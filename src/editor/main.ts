@@ -187,6 +187,7 @@ let botWorker: Worker | null = null;
 
 const canvas = $<HTMLCanvasElement>('ed-canvas');
 const renderer = new Renderer(canvas);
+renderer.noDark = true;
 
 const width = () => grid[0]?.length ?? 0;
 const height = () => grid.length;

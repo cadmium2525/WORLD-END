@@ -170,6 +170,8 @@ export class Renderer {
   camY = 0;
   /** 描画する高さ（ゲームは VIEW_H。エディタは面全体の高さにする） */
   viewH = VIEW_H;
+  /** 暗闇を描かない（エディタの編集画面用） */
+  noDark = false;
   private darkCanvas: HTMLCanvasElement | null = null;
   private fbHp = -1; // 最終ボスの体力の変化を見て演出する
 
@@ -722,7 +724,7 @@ export class Renderer {
     ctx.restore();
 
     // 暗闇
-    if (L.dark) this.drawDark(ctx, sim, cx, camY - cy, W, VH, frameTime);
+    if (L.dark && !this.noDark) this.drawDark(ctx, sim, cx, camY - cy, W, VH, frameTime);
 
     // 持っている鍵
     if (sim.keys > 0) {
