@@ -853,7 +853,7 @@ const tSpring: Band = (t, d, r) => {
   for (let i = 0; i < n; i++) {
     const nu = t.u + 5;
     const dir = cur > t.W / 2 ? -1 : 1;
-    const nx = t.clampX(dir > 0 ? cur + 3 : cur - 5, 3);
+    const nx = t.clampX(dir > 0 ? cur + 2 : cur - 4, 3);
     t.ledge(nx, nx + 2, nu - 1, T.SOLID);
     t.u = nu;
     if (i < n - 1) {
@@ -1033,7 +1033,7 @@ export const DESIGN: StageDesign[] = [
   D('scroll', 'wall', 'gapRun.0 spikeHop.0 cloudHop.0 gapRun.1', '迫る壁の導入（ゆっくり）', { chase: wall(200, 200) }),
   D('puzzle', 'switch', 'switchBridge.0 springSteps.1 switchBack.0 springPit.0', 'スイッチで道を切り替えてバネへ'),
   D('normal', 'cloud', 'cloudHop.1 windTail.1 cloudHop.2 springLow.1', '雲の足場を渡る'),
-  D('climb', 'spring', 'tSpring.0 tZig.1 tSpring.1', 'バネのはしご'),
+  D('climb', 'spring', 'tSpring.0 tSpring.1 tZig.1', 'バネのはしご'),
   D('precise', 'wind', 'windStones.2 windHead.2', '向かい風の中、1マスの足場'),
   D('normal', 'spring', 'springSteps.1 windLift.2 windHead.1 springPit.1', 'バネと風の組み合わせ'),
   D('rush', 'turret', 'turretRow.1 windHead.1 flyerPit.2 walkerGroup.2 windTail.1', '向かい風の中の砲台'),
