@@ -42,6 +42,7 @@ function key(s: Sim): string {
 export interface SolveResult {
   inputs: number[] | null;
   bestX: number; // 到達できた最も右の位置（サブピクセル）
+  partial?: number[]; // 解けなかったとき、いちばん評価の高かった途中までの入力（開発用）
 }
 
 /** 101面以降の新しい探索を使うか */
@@ -154,8 +155,9 @@ export function distanceField(L: Level, sources: number[]): Int32Array {
       if (floorLike(L.tiles[i]) || L.tiles[i] === T.ONEWAY) below = true;
     }
   }
+  const reach = reachable(L);
   const d = new Int32Array(n).fill(FAR);
-  // 費用は 1〜3 の小さな整数なので、距離ごとのバケツで処理する
+  // 費用は小さな整数なので、距離ごとのバケツで処理する
   const buckets: number[][] = [];
   for (const i of sources) {
     d[i] = 0;
@@ -171,7 +173,8 @@ export function distanceField(L: Level, sources: number[]): Int32Array {
       const nb = [x > 0 ? i - 1 : -1, x < L.w - 1 ? i + 1 : -1, i - L.w, i + L.w];
       for (const j of nb) {
         if (j < 0 || j >= n || !passable(L.tiles[j])) continue;
-        const nd = dist + cost[j];
+        // 逆向きに探索しているので j → i がプレイヤーの動き。上へ動く先 i が跳んで届かない高さなら高くつく
+        const nd = dist + cost[j] + (j === i + L.w && !reach[i] ? 5 : 0);
         if (nd >= d[j]) continue;
         d[j] = nd;
         (buckets[nd] ??= []).push(j);
@@ -179,6 +182,41 @@ export function distanceField(L: Level, sources: number[]): Int32Array {
     }
   }
   return d;
+}
+
+/**
+ * 跳んで届く高さのマス（足場の上3行、バネの上7行、オーブのまわり、上昇気流、縦移動床の範囲、
+ * 重力反転のある面では天井の下）。足場は左右1列ずれていてもよい
+ */
+function reachable(L: Level): Uint8Array {
+  const r = new Uint8Array(L.w * L.h);
+  const mark = (x: number, y0: number, y1: number) => {
+    for (let dx = -1; dx <= 1; dx++) {
+      const xx = x + dx;
+      if (xx < 0 || xx >= L.w) continue;
+      for (let y = Math.max(0, y0); y <= Math.min(L.h - 1, y1); y++) r[y * L.w + xx] = 1;
+    }
+  };
+  let grav = false;
+  for (let y = 0; y < L.h; y++) {
+    for (let x = 0; x < L.w; x++) {
+      const t = L.tiles[y * L.w + x];
+      if (t === T.SPRING) mark(x, y - 8, y);
+      else if (t === T.WIND_U) mark(x, y - 3, y);
+      else if (floorLike(t) || t === T.ONEWAY) mark(x, y - 3, y);
+      if (t === T.GRAV_UP) grav = true;
+    }
+  }
+  if (grav) {
+    for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) if (floorLike(L.tiles[y * L.w + x])) mark(x, y, y + 7);
+  }
+  for (const e of L.ents) {
+    if (e.k === 'orb') mark(e.x, e.y - 4, e.y + 3);
+    else if (e.k === 'platV') mark(e.x + 1, e.y - e.range - 3, e.y);
+    else if (e.k === 'platH') for (let k = 0; k <= e.range + e.w; k++) mark(e.x + k, e.y - 3, e.y);
+    else if (e.k === 'flyer') mark(e.x, e.y - 3, e.y + e.range);
+  }
+  return r;
 }
 
 interface Fields {
@@ -261,6 +299,7 @@ function solveNew(L: Level, beam: number, hold: number, maxFrames: number): Solv
   let best = -Infinity;
   let bestAt = 0;
   let bestX = 0;
+  let partial: number[] = [];
   const tall = L.h > 17;
   let nodes: Node[] = [{ sim: new Sim(L), inputs: [], score: 0 }];
   for (let f = 0; f < maxFrames; f += hold) {
@@ -288,18 +327,19 @@ function solveNew(L: Level, beam: number, hold: number, maxFrames: number): Solv
         next.push({ sim: s, inputs: inp, score: scoreNew(L, F, s) });
       }
     }
-    if (next.length === 0) return { inputs: null, bestX };
+    if (next.length === 0) return { inputs: null, bestX, partial };
     next.sort((a, b) => b.score - a.score);
     if (next[0].score > best) {
       best = next[0].score;
       bestAt = f;
       bestX = next[0].sim.p.x;
+      partial = next[0].inputs;
     }
     if (solverDebug && f % 120 === 0) {
       const q = next[0].sim.p;
       console.log(`f=${f} n=${next.length} best=(${(q.x / TS).toFixed(1)},${(q.y / TS).toFixed(1)}) score=${next[0].score.toFixed(0)}`);
     }
-    if (f - bestAt > 60 * 20) return { inputs: null, bestX };
+    if (f - bestAt > 60 * 20) return { inputs: null, bestX, partial };
     // 多様性の確保: 同じ場所に集中しないよう、タイルごとの上限を設けて選ぶ
     const per = new Map<number, number>();
     const cap = Math.max(8, beam >> 4);
@@ -314,5 +354,5 @@ function solveNew(L: Level, beam: number, hold: number, maxFrames: number): Solv
       if (nodes.length >= beam) break;
     }
   }
-  return { inputs: null, bestX };
+  return { inputs: null, bestX, partial };
 }

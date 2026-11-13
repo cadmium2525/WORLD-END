@@ -8,19 +8,31 @@ import { solveLevel } from '../src/shared/solver';
 import { Sim } from '../src/shared/sim';
 import { getStage } from '../src/shared/stages';
 
-/** 迫る壁・溶岩の面で、ボットが壁から最も近づいたときの余裕（秒） */
-export function chaseMargin(stage: number, inputs: number[]): number | null {
+/**
+ * 迫る壁・溶岩の面の余裕。
+ *   margin: ボットが壁から最も近づいたときの距離（壁が追いつくまでの秒数）
+ *   ratio: 「人がボットの何倍の時間をかけても追いつかれないか」（どの地点でも一様に遅いと仮定した最小値）
+ */
+export function chaseMargin(stage: number, inputs: number[]): { margin: number; ratio: number } | null {
   const L = getStage(stage);
-  if (!L.chase) return null;
+  const c = L.chase;
+  if (!c) return null;
   const s = new Sim(L);
   let min = Infinity;
+  let ratio = Infinity;
+  const start = s.chase;
   for (const a of inputs) {
     s.step(a);
-    if (s.frame <= L.chase.delay) continue;
-    const gap = L.chase.dir === 'right' ? s.p.x - s.chase : s.chase - (s.p.y + 14 * 256);
-    min = Math.min(min, gap / L.chase.speed / 60);
+    const pos = c.dir === 'right' ? s.p.x : s.p.y + 14 * 256;
+    if (s.frame > c.delay) {
+      const gap = c.dir === 'right' ? pos - s.chase : s.chase - pos;
+      min = Math.min(min, gap / c.speed / 60);
+    }
+    // 壁がこの位置に届くフレーム
+    const reach = c.delay + Math.abs(pos - start) / c.speed;
+    if (s.frame > 60) ratio = Math.min(ratio, reach / s.frame);
   }
-  return min;
+  return { margin: min, ratio };
 }
 
 export let bestX = 0;
@@ -63,7 +75,7 @@ if (isMain) {
     logs[st] = enc;
     const cm = chaseMargin(st, dec);
     console.log(
-      `stage ${st}: ok ${(sol.length / 60).toFixed(1)}s w=${L.w} h=${L.h} log=${enc.length}B verify=${v.ok} ${vt.toFixed(2)}ms solve=${ms}ms${cm !== null ? ` chase-margin=${cm.toFixed(1)}s` : ''}`,
+      `stage ${st}: ok ${(sol.length / 60).toFixed(1)}s w=${L.w} h=${L.h} log=${enc.length}B verify=${v.ok} ${vt.toFixed(2)}ms solve=${ms}ms${cm !== null ? ` chase-margin=${cm.margin.toFixed(1)}s ratio=${cm.ratio.toFixed(2)}` : ''}`,
     );
     if (!v.ok) fail++;
   }

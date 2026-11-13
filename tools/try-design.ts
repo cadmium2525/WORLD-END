@@ -3,6 +3,7 @@
 import { TS } from '../src/shared/constants';
 import { setSolverDebug, solveLevel } from '../src/shared/solver';
 import { buildFromDesign, type StageDesign, type StageType } from '../src/shared/stages2';
+import { Sim } from '../src/shared/sim';
 import { previewLevel, verifyLevel } from './lib';
 
 const type = (process.argv[2] ?? 'normal') as StageType;
@@ -26,3 +27,13 @@ let r = solveLevel(L);
 if (!r.inputs) r = solveLevel(L, 1500, 3);
 console.log(`w=${L.w} h=${L.h}`, r.inputs ? `ok ${(r.inputs.length / 60).toFixed(1)}s` : `FAILED at x=${(r.bestX / TS).toFixed(1)}`, `${Date.now() - t0}ms`);
 if (r.inputs) console.log(verifyLevel(L, r.inputs));
+else if (r.partial) {
+  // 途中までの最良の動き（10フレームごとの位置）
+  const s = new Sim(L);
+  let line = '';
+  r.partial.forEach((a, i) => {
+    s.step(a);
+    if (i % 10 === 0) line += ` ${i}:(${(s.p.x / TS).toFixed(1)},${(s.p.y / TS).toFixed(1)})${a & 4 ? 'J' : ''}${a & 1 ? 'L' : a & 2 ? 'R' : ''}`;
+  });
+  console.log('best path:' + line);
+}

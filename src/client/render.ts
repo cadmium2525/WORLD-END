@@ -910,16 +910,18 @@ export class Renderer {
         }
         return;
       }
-      // 溶岩
+      // 溶岩（面の幅の中だけ）
+      const lx0 = Math.max(cx - 4, 0);
+      const lx1 = Math.min(cx + W + 8, sim.level.w * TILE);
       ctx.fillStyle = '#c02810';
-      ctx.fillRect(cx - 4, pos + 3, W + 8, camY + VH - pos + 8);
+      ctx.fillRect(lx0, pos + 3, lx1 - lx0, camY + VH - pos + 8);
       ctx.fillStyle = '#ff7a20';
-      for (let x = Math.floor(cx / 8) * 8 - 8; x < cx + W + 8; x += 8) {
+      for (let x = Math.floor(lx0 / 8) * 8; x < lx1; x += 8) {
         const wv = ((x / 8 + Math.floor(ft / 6)) % 2) * 2;
         ctx.fillRect(x, pos + wv, 8, 4);
       }
       ctx.fillStyle = '#ffd040';
-      for (let x = Math.floor(cx / 16) * 16; x < cx + W; x += 16) {
+      for (let x = Math.floor(lx0 / 16) * 16; x < lx1; x += 16) {
         if (h2(x, Math.floor(ft / 10)) % 5 === 0) ctx.fillRect(x + 6, pos + 6, 2, 2);
       }
     }

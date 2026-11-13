@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "solve": "tsx tools/solve.ts",
     "preview-stage": "tsx tools/preview.ts",
-    "verify-stages": "tsx tools/solve.ts 1 100",
+    "verify-stages": "tsx tools/solve.ts 1 200",
+    "diversity": "tsx tools/diversity.ts",
+    "determinism": "tsx tools/determinism.ts",
+    "stage-hash": "tsx tools/stage-hash.ts check",
     "e2e": "tsx tools/e2e.ts"
   },
   "devDependencies": {
