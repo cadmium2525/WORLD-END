@@ -11,6 +11,10 @@ import type { EntSpec, Level } from './level';
 import { Rng, hashSeed } from './rng';
 import customData from './stage-data.json';
 import { checkDef, defToLevel, type StageDef } from './stageFormat';
+import { buildDesigned, designOf, finalBossStage } from './stages2';
+
+/** 200面（真の最終ボス） */
+export const TRUE_FINAL_STAGE = 200;
 
 /** ステージエディタで作った手作りステージ（面番号 → データ）。自動生成より優先される */
 export const CUSTOM_STAGES = customData as unknown as Record<string, StageDef>;
@@ -586,12 +590,20 @@ function chunkCount(stage: number): number {
 }
 
 export function worldOf(stage: number): number {
+  if (stage > BOSS_STAGE) return Math.min(15, 11 + Math.floor((stage - 101) / 20));
   return Math.min(10, Math.floor((stage - 1) / 10) + 1);
 }
 
 export function stageLabel(stage: number): string {
   if (stage === BOSS_STAGE) return 'FINAL';
+  if (stage === TRUE_FINAL_STAGE) return 'WORLD END';
+  if (stage > BOSS_STAGE) return `${worldOf(stage)}-${((stage - 101) % 20) + 1}`;
   return `${worldOf(stage)}-${((stage - 1) % 10) + 1}`;
+}
+
+/** ボス面か（100面・200面。エディタで編集できない） */
+export function isBossStage(stage: number): boolean {
+  return stage === BOSS_STAGE || stage === TRUE_FINAL_STAGE;
 }
 
 const cache = new Map<number, Level>();
@@ -601,8 +613,9 @@ export function getStage(stage: number): Level {
   if (!L) {
     const def = CUSTOM_STAGES[String(stage)];
     if (stage === BOSS_STAGE) L = bossStage();
+    else if (stage === TRUE_FINAL_STAGE) L = finalBossStage(stage, worldOf(stage));
     else if (def && checkDef(def).length === 0) L = defToLevel(stage, worldOf(stage), def);
-    else L = buildStage(stage);
+    else L = generatedStage(stage);
     cache.set(stage, L);
   }
   return L;
@@ -610,7 +623,10 @@ export function getStage(stage: number): Level {
 
 /** 自動生成のステージ（手作りがあっても無視して生成） */
 export function generatedStage(stage: number): Level {
-  return stage === BOSS_STAGE ? bossStage() : buildStage(stage);
+  if (stage === BOSS_STAGE) return bossStage();
+  if (stage === TRUE_FINAL_STAGE) return finalBossStage(stage, worldOf(stage));
+  if (designOf(stage)) return buildDesigned(stage, worldOf(stage));
+  return buildStage(stage);
 }
 
 export function isCustomStage(stage: number): boolean {
@@ -711,7 +727,7 @@ function bossStage(): Level {
 }
 
 /**
- * 80〜100面のデータのハッシュ。ゲームとサーバーでステージが食い違っていないかの確認に使う
+ * 80〜200面のデータのハッシュ。ゲームとサーバーでステージが食い違っていないかの確認に使う
  * （手作りステージを変えたのにサーバーを更新し忘れると、正しいクリアが検証失敗になるため）
  */
 export function stagesVersion(): string {
@@ -720,11 +736,17 @@ export function stagesVersion(): string {
     h ^= n & 0xff;
     h = Math.imul(h, 0x01000193) >>> 0;
   };
-  for (let s = 80; s <= BOSS_STAGE; s++) {
+  for (let s = 80; s <= TRUE_FINAL_STAGE; s++) {
     const L = getStage(s);
     mix(L.w);
     mix(L.startX);
     mix(L.startY);
+    if (s > BOSS_STAGE) {
+      // 101面以降は高さ・暗闇・迫る壁も対象
+      mix(L.h);
+      mix(L.dark ? 1 : 0);
+      if (L.chase) for (const c of JSON.stringify(L.chase)) mix(c.charCodeAt(0));
+    }
     for (let i = 0; i < L.tiles.length; i++) mix(L.tiles[i]);
     const e = JSON.stringify(L.ents);
     for (let i = 0; i < e.length; i++) mix(e.charCodeAt(i));

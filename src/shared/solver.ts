@@ -1,5 +1,9 @@
 // 自動攻略ボット（ビームサーチ）。面がクリア可能かを検証する（開発ツール・エディタ用）
-import { IN_JUMP, IN_LEFT, IN_RIGHT, PW, TS } from './constants';
+//
+// 1〜100面: 従来どおり「右へ進むほど高評価」で探す（結果を変えないため、そのまま残している）。
+// 101面以降: ゴールまでの道のり（タイル上の最短経路の長さ）を前もって計算し、それが短いほど高評価にする。
+//   縦に登る面・行き止まりのある面・鍵と扉の面（先に鍵へ向かう）でも迷わないようにするため。
+import { IN_JUMP, IN_LEFT, IN_RIGHT, PH, PW, T, TS } from './constants';
 import type { Level } from './level';
 import { Sim } from './sim';
 
@@ -38,10 +42,17 @@ function key(s: Sim): string {
 export interface SolveResult {
   inputs: number[] | null;
   bestX: number; // 到達できた最も右の位置（サブピクセル）
+  partial?: number[]; // 解けなかったとき、いちばん評価の高かった途中までの入力（開発用）
+}
+
+/** 101面以降の新しい探索を使うか */
+export function usesNewSolver(L: Level): boolean {
+  return L.stage > 100;
 }
 
 /** ビームサーチで面のクリア手順を探す。見つからなければ inputs = null */
 export function solveLevel(L: Level, beam = 400, hold = 4, maxFrames = 60 * 240): SolveResult {
+  if (usesNewSolver(L)) return solveNew(L, beam, hold, maxFrames);
   let bestX = 0;
   let bestAt = 0;
   let nodes: Node[] = [{ sim: new Sim(L), inputs: [], score: 0 }];
@@ -93,3 +104,296 @@ export function solveLevel(L: Level, beam = 400, hold = 4, maxFrames = 60 * 240)
   return { inputs: null, bestX };
 }
 
+// ================= 101面以降 =================
+
+const FAR = 1 << 20;
+/** 開発用: 探索の途中経過を表示する */
+export let solverDebug = false;
+export function setSolverDebug(v: boolean) {
+  solverDebug = v;
+}
+
+/** タイルが（道のり計算で）通れるか。トゲは通れない扱い、扉・A/Bブロックは通れる扱い */
+function passable(t: number): boolean {
+  switch (t) {
+    case T.SOLID:
+    case T.BRICK:
+    case T.SWITCH:
+    case T.TURRET:
+    case T.SPRING:
+    case T.ICE:
+    case T.CONV_L:
+    case T.CONV_R:
+    case T.CRUMBLE:
+    case T.SPIKE_UP:
+    case T.SPIKE_DOWN:
+    case T.SPIKE_LEFT:
+    case T.SPIKE_RIGHT:
+      return false;
+    default:
+      return true;
+  }
+}
+
+/** 足場になるタイルか（「下に何もない＝落ちたら死ぬ場所」の判定用） */
+function floorLike(t: number): boolean {
+  return !passable(t) && t !== T.SPIKE_UP && t !== T.SPIKE_DOWN && t !== T.SPIKE_LEFT && t !== T.SPIKE_RIGHT;
+}
+
+/**
+ * 指定タイル群からの道のり（ダイクストラ法）。
+ * 真下に足場が無いマス（穴の上・穴の中）は通りにくくして、穴の底を通る近道を選ばないようにする
+ */
+export function distanceField(L: Level, sources: number[]): Int32Array {
+  const n = L.w * L.h;
+  const cost = new Uint8Array(n);
+  for (let x = 0; x < L.w; x++) {
+    let below = false; // この行より下に足場があるか
+    for (let y = L.h - 1; y >= 0; y--) {
+      const i = y * L.w + x;
+      cost[i] = below || L.tiles[i] === T.WIND_U ? 1 : 3;
+      if (floorLike(L.tiles[i]) || L.tiles[i] === T.ONEWAY) below = true;
+    }
+  }
+  const reach = reachable(L);
+  const d = new Int32Array(n).fill(FAR);
+  // 費用は小さな整数なので、距離ごとのバケツで処理する
+  const buckets: number[][] = [];
+  for (const i of sources) {
+    d[i] = 0;
+    (buckets[0] ??= []).push(i);
+  }
+  for (let dist = 0; dist < buckets.length; dist++) {
+    const bk = buckets[dist];
+    if (!bk) continue;
+    for (let q = 0; q < bk.length; q++) {
+      const i = bk[q];
+      if (d[i] !== dist) continue;
+      const x = i % L.w;
+      const nb = [x > 0 ? i - 1 : -1, x < L.w - 1 ? i + 1 : -1, i - L.w, i + L.w];
+      for (const j of nb) {
+        if (j < 0 || j >= n || !passable(L.tiles[j])) continue;
+        // 逆向きに探索しているので j → i がプレイヤーの動き。上へ動く先 i が跳んで届かない高さなら高くつく
+        const nd = dist + cost[j] + (j === i + L.w && !reach[i] ? 5 : 0);
+        if (nd >= d[j]) continue;
+        d[j] = nd;
+        (buckets[nd] ??= []).push(j);
+      }
+    }
+  }
+  return d;
+}
+
+/**
+ * 跳んで届く高さのマス（足場の上3行、バネの上7行、オーブのまわり、上昇気流、縦移動床の範囲、
+ * 重力反転のある面では天井の下）。足場は左右1列ずれていてもよい
+ */
+function reachable(L: Level): Uint8Array {
+  const r = new Uint8Array(L.w * L.h);
+  const mark = (x: number, y0: number, y1: number) => {
+    for (let dx = -1; dx <= 1; dx++) {
+      const xx = x + dx;
+      if (xx < 0 || xx >= L.w) continue;
+      for (let y = Math.max(0, y0); y <= Math.min(L.h - 1, y1); y++) r[y * L.w + xx] = 1;
+    }
+  };
+  let grav = false;
+  for (let y = 0; y < L.h; y++) {
+    for (let x = 0; x < L.w; x++) {
+      const t = L.tiles[y * L.w + x];
+      if (t === T.SPRING) mark(x, y - 8, y);
+      else if (t === T.WIND_U) mark(x, y - 3, y);
+      else if ((floorLike(t) || t === T.ONEWAY) && y > 0 && passable(L.tiles[(y - 1) * L.w + x])) mark(x, y - 3, y); // 上に立てる面だけ
+      if (t === T.GRAV_UP) grav = true;
+    }
+  }
+  if (grav) {
+    for (let y = 0; y < L.h - 1; y++) {
+      for (let x = 0; x < L.w; x++) if (floorLike(L.tiles[y * L.w + x]) && passable(L.tiles[(y + 1) * L.w + x])) mark(x, y, y + 7);
+    }
+  }
+  for (const e of L.ents) {
+    if (e.k === 'orb') mark(e.x, e.y - 4, e.y + 3);
+    else if (e.k === 'platV') mark(e.x + 1, e.y - e.range - 3, e.y);
+    else if (e.k === 'platH') for (let k = 0; k <= e.range + e.w; k++) mark(e.x + k, e.y - 3, e.y);
+    else if (e.k === 'flyer') mark(e.x, e.y - 3, e.y + e.range);
+  }
+  return r;
+}
+
+interface Fields {
+  goal: Int32Array;
+  keys: { idx: number; f: Int32Array }[]; // ents の index と、その鍵までの距離
+}
+
+function buildFields(L: Level): Fields {
+  const goals: number[] = [];
+  for (let i = 0; i < L.tiles.length; i++) if (L.tiles[i] === T.GOAL) goals.push(i);
+  const keys: Fields['keys'] = [];
+  L.ents.forEach((e, idx) => {
+    if (e.k === 'key') keys.push({ idx, f: distanceField(L, [e.y * L.w + e.x]) });
+  });
+  return { goal: distanceField(L, goals), keys };
+}
+
+function fieldScore(L: Level, f: Int32Array, s: Sim): number {
+  const p = s.p;
+  const cxs = p.x + PW / 2;
+  const cys = p.y + PH / 2;
+  const cx = Math.max(0, Math.min(L.w - 1, Math.floor(cxs / TS)));
+  const cy = Math.max(0, Math.min(L.h - 1, Math.floor(cys / TS)));
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= L.w || y >= L.h ? FAR : f[y * L.w + x]);
+  const d = at(cx, cy);
+  let v = -Math.min(d, FAR) * TS;
+  // タイル内の位置で細かく差をつける（距離が減る向きへ進んでいるほど高い）
+  const fx = (cxs % TS) - TS / 2;
+  const fy = (cys % TS) - TS / 2;
+  const dl = at(cx - 1, cy);
+  const dr = at(cx + 1, cy);
+  const du = at(cx, cy - 1);
+  const dd = at(cx, cy + 1);
+  if (dr < dl) v += fx;
+  else if (dl < dr) v -= fx;
+  if (dd < du) v += fy;
+  else if (du < dd) v -= fy;
+  return v;
+}
+
+function scoreNew(L: Level, F: Fields, s: Sim): number {
+  const fb = s.fboss;
+  if (fb) return fbossScore(s);
+  let field = F.goal;
+  let progress = 0;
+  if (F.keys.length) {
+    // 拾った鍵・開けた扉の数が進み具合。鍵を持っていなければ、まだ拾っていない最初の鍵へ向かう
+    let got = 0;
+    let next: Int32Array | null = null;
+    for (const k of F.keys) {
+      if (!s.ents[k.idx].alive) got++;
+      else if (!next) next = k.f;
+    }
+    const opened = got - s.keys;
+    progress = got + opened;
+    if (s.keys === 0 && next && opened < F.keys.length) field = next;
+  }
+  let v = progress * 1e8 + fieldScore(L, field, s);
+  if (s.switchOn) v += TS;
+  return v;
+}
+
+/** 200面ボス戦の評価: 体力を減らすほど高く、予兆の出ている攻撃の範囲にいるほど低い */
+function fbossScore(s: Sim): number {
+  const fb = s.fboss!;
+  const p = s.p;
+  let v = (fb.maxHp - fb.hp) * 1e7;
+  if (fb.state === 'dying' || fb.state === 'dead') return v + 1e9;
+  const pcx = p.x + PW / 2;
+  const bcx = fb.x + fb.w / 2;
+  const feet = p.y + PH;
+  const onPlatform = feet <= 11 * TS + 2 * 256;
+  const DANGER = 1e6;
+  switch (fb.state) {
+    case 'tele_slam':
+    case 'slam': {
+      const dx = Math.abs(pcx - (fb.targetX + fb.w / 2));
+      if (dx < fb.w / 2 + 14 * 256) v -= DANGER;
+      v += Math.min(dx, 4 * TS) / 4;
+      break;
+    }
+    case 'stun':
+    case 'recover':
+      v -= Math.abs(bcx - pcx) / 8;
+      v -= p.y / 16;
+      break;
+    case 'tele_beam':
+    case 'beam':
+      if (fb.beamHigh) {
+        if (onPlatform || feet < 14 * TS - 20 * 256) v -= DANGER;
+      } else if (!onPlatform) v -= DANGER / 2 + (feet - 11 * TS);
+      break;
+    case 'tele_pillar':
+    case 'pillar':
+      for (const c of fb.cols) if (pcx > c * TS - 8 * 256 && pcx < (c + 2) * TS + 8 * 256 && !onPlatform) v -= DANGER;
+      break;
+    case 'tele_rain':
+    case 'hover':
+      for (const b of s.bullets) if (Math.abs(b.x + b.w / 2 - pcx) < 14 * 256) v -= DANGER / 4;
+      if (fb.state === 'tele_rain') for (const c of fb.cols) if (Math.abs(c * TS + TS / 2 - pcx) < 14 * 256) v -= DANGER;
+      // 次の攻撃に備えて、ボスの近く・床の上にいる
+      v -= Math.abs(bcx - pcx) / 16;
+      break;
+    default:
+      v -= Math.abs(bcx - pcx) / 16;
+  }
+  return v;
+}
+
+function keyNew(s: Sim): string {
+  const p = s.p;
+  let k = `${p.x >> 9},${p.y >> 9},${p.vy >> 7},${p.vx >> 7},${p.onGround ? 1 : 0},${s.switchOn ? 1 : 0},${p.grav},${p.air},${s.keys}`;
+  if (s.fboss) k += `,${s.fboss.hp},${s.fboss.x >> 11}`;
+  return k;
+}
+
+function solveNew(L: Level, beam: number, hold: number, maxFrames: number): SolveResult {
+  const F = buildFields(L);
+  let best = -Infinity;
+  let bestAt = 0;
+  let bestX = 0;
+  let partial: number[] = [];
+  const tall = L.h > 17;
+  let nodes: Node[] = [{ sim: new Sim(L), inputs: [], score: 0 }];
+  for (let f = 0; f < maxFrames; f += hold) {
+    const next: Node[] = [];
+    const seen = new Set<string>();
+    for (const n of nodes) {
+      for (const a of ACTIONS) {
+        const s = n.sim.clone();
+        const inp = n.inputs.slice();
+        let done = false;
+        for (let h = 0; h < hold; h++) {
+          s.step(a);
+          inp.push(a);
+          if (s.dead) break;
+          if (s.cleared) {
+            done = true;
+            break;
+          }
+        }
+        if (done) return { inputs: inp, bestX: s.p.x };
+        if (s.dead) continue;
+        const k = keyNew(s);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        next.push({ sim: s, inputs: inp, score: scoreNew(L, F, s) });
+      }
+    }
+    if (next.length === 0) return { inputs: null, bestX, partial };
+    next.sort((a, b) => b.score - a.score);
+    if (next[0].score > best) {
+      best = next[0].score;
+      bestAt = f;
+      bestX = next[0].sim.p.x;
+      partial = next[0].inputs;
+    }
+    if (solverDebug && f % 120 === 0) {
+      const q = next[0].sim.p;
+      console.log(`f=${f} n=${next.length} best=(${(q.x / TS).toFixed(1)},${(q.y / TS).toFixed(1)}) score=${next[0].score.toFixed(0)}`);
+    }
+    if (f - bestAt > 60 * 20) return { inputs: null, bestX, partial };
+    // 多様性の確保: 同じ場所に集中しないよう、タイルごとの上限を設けて選ぶ
+    const per = new Map<number, number>();
+    const cap = Math.max(8, beam >> 4);
+    nodes = [];
+    for (const nd of next) {
+      const p = nd.sim.p;
+      const b = ((p.x >> 12) * 2 + (p.onGround ? 1 : 0)) * 512 + (tall || nd.sim.fboss ? p.y >> 12 : 0);
+      const c = per.get(b) ?? 0;
+      if (c >= cap) continue;
+      per.set(b, c + 1);
+      nodes.push(nd);
+      if (nodes.length >= beam) break;
+    }
+  }
+  return { inputs: null, bestX, partial };
+}
