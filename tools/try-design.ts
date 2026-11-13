@@ -1,7 +1,7 @@
 // 設計の試作用（面を作らずにビート列を試す）:
 //   npx tsx tools/try-design.ts <型> "<ビート列>" [面番号] [chase=right:300:150] [dark] [quiet]
 import { TS } from '../src/shared/constants';
-import { solveLevel } from '../src/shared/solver';
+import { setSolverDebug, solveLevel } from '../src/shared/solver';
 import { buildFromDesign, type StageDesign, type StageType } from '../src/shared/stages2';
 import { previewLevel, verifyLevel } from './lib';
 
@@ -17,6 +17,7 @@ for (const a of process.argv.slice(5)) {
   }
   if (a === 'dark') ds.dark = true;
   if (a === 'quiet') quiet = true;
+  if (a === 'debug') setSolverDebug(true);
 }
 const L = buildFromDesign(stage, 11 + Math.floor((stage - 101) / 20), ds);
 if (!quiet) console.log(previewLevel(L));

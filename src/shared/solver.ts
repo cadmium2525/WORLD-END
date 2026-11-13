@@ -106,6 +106,11 @@ export function solveLevel(L: Level, beam = 400, hold = 4, maxFrames = 60 * 240)
 // ================= 101面以降 =================
 
 const FAR = 1 << 20;
+/** 開発用: 探索の途中経過を表示する */
+export let solverDebug = false;
+export function setSolverDebug(v: boolean) {
+  solverDebug = v;
+}
 
 /** タイルが（道のり計算で）通れるか。トゲは通れない扱い、扉・A/Bブロックは通れる扱い */
 function passable(t: number): boolean {
@@ -129,26 +134,48 @@ function passable(t: number): boolean {
   }
 }
 
-/** 指定タイル群からの距離（4近傍の幅優先探索） */
+/** 足場になるタイルか（「下に何もない＝落ちたら死ぬ場所」の判定用） */
+function floorLike(t: number): boolean {
+  return !passable(t) && t !== T.SPIKE_UP && t !== T.SPIKE_DOWN && t !== T.SPIKE_LEFT && t !== T.SPIKE_RIGHT;
+}
+
+/**
+ * 指定タイル群からの道のり（ダイクストラ法）。
+ * 真下に足場が無いマス（穴の上・穴の中）は通りにくくして、穴の底を通る近道を選ばないようにする
+ */
 export function distanceField(L: Level, sources: number[]): Int32Array {
-  const d = new Int32Array(L.w * L.h).fill(FAR);
-  const q = new Int32Array(L.w * L.h);
-  let qh = 0;
-  let qt = 0;
-  for (const i of sources) {
-    if (d[i] === 0) continue;
-    d[i] = 0;
-    q[qt++] = i;
+  const n = L.w * L.h;
+  const cost = new Uint8Array(n);
+  for (let x = 0; x < L.w; x++) {
+    let below = false; // この行より下に足場があるか
+    for (let y = L.h - 1; y >= 0; y--) {
+      const i = y * L.w + x;
+      cost[i] = below || L.tiles[i] === T.WIND_U ? 1 : 3;
+      if (floorLike(L.tiles[i]) || L.tiles[i] === T.ONEWAY) below = true;
+    }
   }
-  while (qh < qt) {
-    const i = q[qh++];
-    const x = i % L.w;
-    const nd = d[i] + 1;
-    const nb = [x > 0 ? i - 1 : -1, x < L.w - 1 ? i + 1 : -1, i - L.w, i + L.w];
-    for (const j of nb) {
-      if (j < 0 || j >= d.length || d[j] <= nd || !passable(L.tiles[j])) continue;
-      d[j] = nd;
-      q[qt++] = j;
+  const d = new Int32Array(n).fill(FAR);
+  // 費用は 1〜3 の小さな整数なので、距離ごとのバケツで処理する
+  const buckets: number[][] = [];
+  for (const i of sources) {
+    d[i] = 0;
+    (buckets[0] ??= []).push(i);
+  }
+  for (let dist = 0; dist < buckets.length; dist++) {
+    const bk = buckets[dist];
+    if (!bk) continue;
+    for (let q = 0; q < bk.length; q++) {
+      const i = bk[q];
+      if (d[i] !== dist) continue;
+      const x = i % L.w;
+      const nb = [x > 0 ? i - 1 : -1, x < L.w - 1 ? i + 1 : -1, i - L.w, i + L.w];
+      for (const j of nb) {
+        if (j < 0 || j >= n || !passable(L.tiles[j])) continue;
+        const nd = dist + cost[j];
+        if (nd >= d[j]) continue;
+        d[j] = nd;
+        (buckets[nd] ??= []).push(j);
+      }
     }
   }
   return d;
@@ -268,7 +295,11 @@ function solveNew(L: Level, beam: number, hold: number, maxFrames: number): Solv
       bestAt = f;
       bestX = next[0].sim.p.x;
     }
-    if (f - bestAt > 60 * 30) return { inputs: null, bestX };
+    if (solverDebug && f % 120 === 0) {
+      const q = next[0].sim.p;
+      console.log(`f=${f} n=${next.length} best=(${(q.x / TS).toFixed(1)},${(q.y / TS).toFixed(1)}) score=${next[0].score.toFixed(0)}`);
+    }
+    if (f - bestAt > 60 * 20) return { inputs: null, bestX };
     // 多様性の確保: 同じ場所に集中しないよう、タイルごとの上限を設けて選ぶ
     const per = new Map<number, number>();
     const cap = Math.max(8, beam >> 4);

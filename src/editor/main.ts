@@ -1,11 +1,12 @@
 // ステージエディタ
 import '../client/style.css';
 import './editor.css';
-import { BOSS_STAGE, ROWS, T, TILE, VIEW_H } from '../shared/constants';
+import { ROWS, T, TILE, VIEW_H } from '../shared/constants';
 import type { EntSpec, Level } from '../shared/level';
 import { Sim } from '../shared/sim';
-import { MAX_WIDTH, MIN_WIDTH, checkDef, defToLevel, levelToDef, type StageDef } from '../shared/stageFormat';
-import { CUSTOM_STAGES, generatedStage, stageLabel, worldOf } from '../shared/stages';
+import { MAX_HEIGHT, MAX_WIDTH, MIN_WIDTH, checkDef, defToLevel, levelToDef, type StageDef } from '../shared/stageFormat';
+import { CUSTOM_STAGES, TRUE_FINAL_STAGE, generatedStage, isBossStage, stageLabel, worldOf } from '../shared/stages';
+import { TYPE_NAMES, designOf } from '../shared/stages2';
 import { Input } from '../client/input';
 import { Renderer, WORLD_NAMES } from '../client/render';
 
@@ -83,6 +84,32 @@ const TOOLS: { group: string; items: Tool[] }[] = [
       { id: 'ent:platV', label: '縦移動床', color: '#f0e0a0' },
     ],
   },
+  {
+    group: '101面〜 地形',
+    items: [
+      { id: 'J', label: 'バネ', color: '#ff5a3a' },
+      { id: '}', label: '風 →', color: '#d0f0ff' },
+      { id: '{', label: '風 ←', color: '#d0f0ff' },
+      { id: '|', label: '上昇気流', color: '#c0fff0' },
+      { id: 'I', label: '氷の床', color: '#b8e4ff' },
+      { id: 'Y', label: 'つらら', color: '#d8f4ff' },
+      { id: 'L', label: 'コンベア ←', color: '#3a3a40' },
+      { id: 'R', label: 'コンベア →', color: '#3a3a40' },
+      { id: 'D', label: '扉', color: '#c08a40' },
+      { id: 'U', label: '重力反転', color: '#c050ff' },
+      { id: 'N', label: '重力を戻す', color: '#50dcff' },
+    ],
+  },
+  {
+    group: '101面〜 配置物',
+    items: [
+      { id: 'ent:crusher', label: '圧殺ブロック', color: '#8aa8d8' },
+      { id: 'ent:laser', label: 'レーザー', color: '#ff3a4a' },
+      { id: 'ent:saw', label: '回転ノコギリ', color: '#d8dce4' },
+      { id: 'ent:orb', label: '空中ジャンプオーブ', color: '#40e0c8' },
+      { id: 'ent:key', label: '鍵', color: '#ffd040' },
+    ],
+  },
 ];
 
 const ENT_NAMES: Record<string, string> = {
@@ -91,6 +118,11 @@ const ENT_NAMES: Record<string, string> = {
   turret: '砲台',
   platH: '横移動床',
   platV: '縦移動床',
+  crusher: '圧殺ブロック',
+  laser: 'レーザー',
+  saw: '回転ノコギリ',
+  orb: '空中ジャンプオーブ',
+  key: '鍵',
 };
 
 function defaultEnt(k: string, x: number, y: number): EntSpec | null {
@@ -105,6 +137,16 @@ function defaultEnt(k: string, x: number, y: number): EntSpec | null {
       return { k: 'platH', x, y, w: 3, range: 4, speed: 144, phase: 0 };
     case 'platV':
       return { k: 'platV', x, y, w: 2, range: 5, speed: 128, phase: 0 };
+    case 'crusher':
+      return { k: 'crusher', x, y, w: 2 };
+    case 'laser':
+      return { k: 'laser', x, y, dx: 0, dy: 1, len: 6, period: 110, on: 40, phase: 0 };
+    case 'saw':
+      return { k: 'saw', x, y, tw: 4, th: 0, speed: 128, phase: 0 };
+    case 'orb':
+      return { k: 'orb', x, y };
+    case 'key':
+      return { k: 'key', x, y };
   }
   return null;
 }
@@ -118,6 +160,12 @@ function entRect(e: EntSpec): [number, number, number, number] {
       return [e.x, e.y, e.w + e.range, 1];
     case 'platV':
       return [e.x, e.y - e.range, e.w, e.range + 1];
+    case 'crusher':
+      return [e.x, e.y, e.w, 2];
+    case 'saw':
+      return [e.x, e.y, e.tw + 1, e.th + 1];
+    case 'laser':
+      return e.dx !== 0 ? [e.dx > 0 ? e.x : e.x - e.len, e.y, e.len + 1, 1] : [e.x, e.dy > 0 ? e.y : e.y - e.len, 1, e.len + 1];
     default:
       return [e.x, e.y, 1, 1];
   }
@@ -141,10 +189,20 @@ const canvas = $<HTMLCanvasElement>('ed-canvas');
 const renderer = new Renderer(canvas);
 
 const width = () => grid[0]?.length ?? 0;
-const toDef = (): StageDef => ({ rows: grid.map((r) => r.join('')), ents: ents.map((e) => ({ ...e })) });
+const height = () => grid.length;
+let extra: Pick<StageDef, 'dark' | 'chase'> = {}; // 暗闇・迫る壁（101面以降）
+const toDef = (): StageDef => {
+  const d: StageDef = { rows: grid.map((r) => r.join('')), ents: ents.map((e) => ({ ...e })) };
+  if (extra.dark) d.dark = true;
+  if (extra.chase) d.chase = { ...extra.chase };
+  return d;
+};
 function fromDef(d: StageDef) {
   grid = d.rows.map((r) => r.split(''));
   ents = d.ents.map((e) => ({ ...e }));
+  extra = {};
+  if (d.dark) extra.dark = true;
+  if (d.chase) extra.chase = { ...d.chase };
   selected = -1;
 }
 const snapshot = () => JSON.stringify(toDef());
@@ -213,7 +271,8 @@ function redo() {
 function buildStageSelect() {
   const sel = $<HTMLSelectElement>('ed-stage');
   sel.innerHTML = '';
-  for (let n = 1; n < BOSS_STAGE; n++) {
+  for (let n = 1; n < TRUE_FINAL_STAGE; n++) {
+    if (isBossStage(n)) continue;
     const o = document.createElement('option');
     o.value = String(n);
     const src = sourceOf(n);
@@ -230,7 +289,11 @@ function refreshAll() {
   const badge = $('ed-source');
   badge.textContent = src === 'draft' ? '下書き（未反映）' : src === 'repo' ? '手作り（反映済み）' : '自動生成';
   badge.className = `badge ${src}`;
-  $('ed-info').innerHTML = `${stage}面（${stageLabel(stage)}）${WORLD_NAMES[worldOf(stage) - 1]}<br>幅 ${width()} 列 ／ 配置物 ${ents.length} 個`;
+  const ds = designOf(stage);
+  $('ed-info').innerHTML =
+    `${stage}面（${stageLabel(stage)}）${WORLD_NAMES[worldOf(stage) - 1]}<br>幅 ${width()} 列 × 高さ ${height()} 行 ／ 配置物 ${ents.length} 個` +
+    (ds ? `<br><small>設計表: ${TYPE_NAMES[ds.type]}・${ds.note}</small>` : '');
+  renderExtra();
   const errs = checkDef(toDef());
   $('ed-errors').innerHTML = errs.length
     ? errs.map((e) => `<div class="err">⚠ ${e}</div>`).join('')
@@ -250,10 +313,12 @@ function draw() {
   renderer.viewW = W;
   renderer.scale = zoom;
   renderer.camX = 0;
+  const VH = L.h * TILE;
+  renderer.viewH = VH;
   canvas.width = W * zoom;
-  canvas.height = VIEW_H * zoom;
+  canvas.height = VH * zoom;
   canvas.style.width = `${W * zoom}px`;
-  canvas.style.height = `${VIEW_H * zoom}px`;
+  canvas.style.height = `${VH * zoom}px`;
   renderer.draw(sim, 0);
   const ctx = renderer.ctx;
   ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
@@ -264,9 +329,9 @@ function draw() {
   ctx.beginPath();
   for (let x = 0; x <= L.w; x++) {
     ctx.moveTo(x * TILE, 0);
-    ctx.lineTo(x * TILE, VIEW_H);
+    ctx.lineTo(x * TILE, VH);
   }
-  for (let y = 0; y <= ROWS; y++) {
+  for (let y = 0; y <= L.h; y++) {
     ctx.moveTo(0, y * TILE);
     ctx.lineTo(W, y * TILE);
   }
@@ -275,18 +340,19 @@ function draw() {
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
   ctx.font = '7px sans-serif';
   for (let x = 0; x < L.w; x += 10) {
-    ctx.fillRect(x * TILE, 0, 1 / zoom, VIEW_H);
+    ctx.fillRect(x * TILE, 0, 1 / zoom, VH);
     ctx.fillText(String(x), x * TILE + 2, 8);
   }
+  for (let y = 10; y < L.h; y += 10) ctx.fillText(String(y), 2, y * TILE - 2);
 
   // 選択列
   if (selCol >= 0) {
     ctx.fillStyle = 'rgba(120,120,255,0.15)';
-    ctx.fillRect(selCol * TILE, 0, TILE, VIEW_H);
+    ctx.fillRect(selCol * TILE, 0, TILE, VH);
   }
 
   // スタート・罠・A/B を見やすく
-  for (let y = 0; y < ROWS; y++) {
+  for (let y = 0; y < L.h; y++) {
     for (let x = 0; x < L.w; x++) {
       const c = grid[y][x];
       if (c === 'P') {
@@ -318,6 +384,10 @@ function draw() {
     ctx.lineWidth = i === selected ? 1.5 : 1;
     ctx.strokeRect(x * TILE + 0.5, y * TILE + 0.5, w * TILE - 1, h * TILE - 1);
     ctx.setLineDash([]);
+    if (e.k === 'orb' || e.k === 'key') {
+      ctx.fillStyle = e.k === 'orb' ? '#40e0c8' : '#ffd040';
+      ctx.fillRect(e.x * TILE + 3, e.y * TILE + 3, 10, 10);
+    }
     if (e.k === 'walker' || e.k === 'turret') {
       ctx.fillStyle = i === selected ? '#ffe060' : '#fff';
       ctx.fillText(e.dir < 0 ? '←' : '→', e.x * TILE + 4, e.y * TILE - 1);
@@ -380,7 +450,7 @@ function entAt(x: number, y: number): number {
 }
 
 function setCell(x: number, y: number, c: string) {
-  if (x < 0 || y < 0 || x >= width() || y >= ROWS) return;
+  if (x < 0 || y < 0 || x >= width() || y >= height()) return;
   const old = grid[y][x];
   if (old === c) return;
   if (old === 'T') ents = ents.filter((e) => !(e.k === 'turret' && e.x === x && e.y === y));
@@ -432,7 +502,7 @@ function cellOf(ev: PointerEvent): [number, number] {
   const r = canvas.getBoundingClientRect();
   const x = Math.floor((ev.clientX - r.left) / (TILE * zoom));
   const y = Math.floor((ev.clientY - r.top) / (TILE * zoom));
-  return [Math.max(0, Math.min(width() - 1, x)), Math.max(0, Math.min(ROWS - 1, y))];
+  return [Math.max(0, Math.min(width() - 1, x)), Math.max(0, Math.min(height() - 1, y))];
 }
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -470,7 +540,7 @@ canvas.addEventListener('pointermove', (ev) => {
     else if (dragging === 'move' && selected >= 0) {
       const e = ents[selected];
       const nx = Math.max(0, Math.min(width() - 1, x - moveOffset[0]));
-      const ny = Math.max(0, Math.min(ROWS - 1, y - moveOffset[1]));
+      const ny = Math.max(0, Math.min(height() - 1, y - moveOffset[1]));
       if (e.k === 'turret') {
         if (grid[e.y][e.x] === 'T') grid[e.y][e.x] = '.';
         grid[ny][nx] = 'T';
@@ -529,11 +599,22 @@ function renderProps() {
   const fields: [string, string, string, number, number, number][] = []; // key, label, hint, min, max, step
   const k = e.k as string;
   if (k === 'walker' || k === 'turret') fields.push(['dir', '向き', '', -1, 1, 2]);
-  if (k === 'platH' || k === 'platV') fields.push(['w', '幅（タイル）', '', 1, 8, 1]);
-  if (k !== 'walker' && k !== 'turret') fields.push(['range', '移動距離（タイル）', '', 1, 16, 1]);
-  if (k !== 'walker') fields.push(['speed', '速さ（px/フレーム）', k === 'turret' ? '弾の速さ' : '', 0.25, 6, 0.125]);
+  if (k === 'platH' || k === 'platV' || k === 'crusher') fields.push(['w', '幅（タイル）', '', 1, 8, 1]);
+  if (k === 'flyer' || k === 'platH' || k === 'platV') fields.push(['range', '移動距離（タイル）', '', 1, 16, 1]);
+  if (k === 'saw') {
+    fields.push(['tw', '軌道の幅（タイル）', '0 なら縦に往復', 0, 30, 1]);
+    fields.push(['th', '軌道の高さ（タイル）', '0 なら横に往復', 0, 30, 1]);
+  }
+  if (k === 'laser') {
+    fields.push(['dx', '向き 横（-1/0/1）', '', -1, 1, 1]);
+    fields.push(['dy', '向き 縦（-1/0/1）', '横が0のとき使う', -1, 1, 1]);
+    fields.push(['len', '長さ（タイル）', '', 1, 40, 1]);
+    fields.push(['period', '周期（フレーム）', '60 = 1秒', 30, 600, 1]);
+    fields.push(['on', '光っている長さ（フレーム）', '直前の30フレームは予兆', 4, 400, 1]);
+  }
+  if (k === 'flyer' || k === 'platH' || k === 'platV' || k === 'turret' || k === 'saw') fields.push(['speed', '速さ（px/フレーム）', k === 'turret' ? '弾の速さ' : '', 0.25, 6, 0.125]);
   if (k === 'turret') fields.push(['period', '発射間隔（フレーム）', '60 = 1秒', 20, 600, 1]);
-  if (k !== 'walker') fields.push(['phase', '開始タイミング（フレーム）', '同じ種類の動きをずらす', 0, 999, 1]);
+  if (k !== 'walker' && k !== 'crusher' && k !== 'orb' && k !== 'key') fields.push(['phase', '開始タイミング（フレーム）', '同じ種類の動きをずらす', 0, 999, 1]);
 
   let html = `<p><strong>${ENT_NAMES[k] ?? k}</strong>（列 ${e.x}・行 ${e.y}）</p>`;
   for (const [key, label, hint, min, max, step] of fields) {
@@ -569,6 +650,60 @@ function renderProps() {
   });
 }
 
+// ---------------- 面の設定（暗闇・迫る壁・高さ） ----------------
+function buildExtraBox() {
+  const sec = document.createElement('section');
+  sec.innerHTML = `<h3>面の設定 <small>（101面以降の要素）</small></h3>
+    <label class="chk"><input type="checkbox" id="ed-dark" /> 暗闇（プレイヤーの周りだけ見える）</label>
+    <label>迫るもの <select id="ed-chase"><option value="">なし</option><option value="right">背後から迫る壁 →</option><option value="up">せり上がる溶岩 ↑</option></select></label>
+    <label>速さ（px/フレーム）<input type="number" id="ed-chase-speed" min="0.25" max="3" step="0.125" /></label>
+    <label>動き出すまで（フレーム）<input type="number" id="ed-chase-delay" min="0" max="1200" step="10" /></label>
+    <div class="btns"><button id="ed-row-add">上に5行追加（縦に長い面）</button><button id="ed-row-rm">上から5行削除</button></div>`;
+  $('ed-props-box').before(sec);
+  $<HTMLInputElement>('ed-dark').addEventListener('change', (e) => {
+    pushUndo();
+    if ((e.target as HTMLInputElement).checked) extra.dark = true;
+    else delete extra.dark;
+    commit();
+  });
+  const chaseChanged = () => {
+    pushUndo();
+    const dir = $<HTMLSelectElement>('ed-chase').value;
+    if (!dir) delete extra.chase;
+    else {
+      const sp = Math.max(32, Math.round(Number($<HTMLInputElement>('ed-chase-speed').value || 1) * 256));
+      const de = Math.max(0, Math.round(Number($<HTMLInputElement>('ed-chase-delay').value || 150)));
+      extra.chase = { dir: dir as 'right' | 'up', speed: sp, delay: de };
+    }
+    commit();
+  };
+  for (const id of ['ed-chase', 'ed-chase-speed', 'ed-chase-delay']) $(id).addEventListener('change', chaseChanged);
+  $('ed-row-add').addEventListener('click', () => {
+    if (height() + 5 > MAX_HEIGHT) return msg(`高さは最大 ${MAX_HEIGHT} 行です`);
+    pushUndo();
+    for (let i = 0; i < 5; i++) grid.unshift(Array.from({ length: width() }, () => '.'));
+    for (const e of ents) e.y += 5;
+    commit();
+  });
+  $('ed-row-rm').addEventListener('click', () => {
+    if (height() - 5 < ROWS) return msg(`高さは最小 ${ROWS} 行です`);
+    pushUndo();
+    grid.splice(0, 5);
+    ents = ents.filter((e) => e.y >= 5);
+    for (const e of ents) e.y -= 5;
+    commit();
+  });
+}
+
+function renderExtra() {
+  const dark = document.getElementById('ed-dark') as HTMLInputElement | null;
+  if (!dark) return;
+  dark.checked = !!extra.dark;
+  $<HTMLSelectElement>('ed-chase').value = extra.chase?.dir ?? '';
+  $<HTMLInputElement>('ed-chase-speed').value = String((extra.chase?.speed ?? 256) / 256);
+  $<HTMLInputElement>('ed-chase-delay').value = String(extra.chase?.delay ?? 150);
+}
+
 // ---------------- テストプレイ ----------------
 const playLayer = $('ed-playlayer');
 const playCanvas = $<HTMLCanvasElement>('game');
@@ -587,7 +722,8 @@ function standY(L: Level, x: number): number {
   for (let y = 1; y < L.h; y++) {
     const t = L.tiles[y * L.w + x];
     const above = L.tiles[(y - 1) * L.w + x];
-    const solid = t === T.SOLID || t === T.BRICK || t === T.CRUMBLE || t === T.ONEWAY || t === T.SWITCH || t === T.TURRET;
+    const solid =
+      t === T.SOLID || t === T.BRICK || t === T.CRUMBLE || t === T.ONEWAY || t === T.SWITCH || t === T.TURRET || t === T.ICE || t === T.CONV_L || t === T.CONV_R;
     if (solid && (above === T.EMPTY || above === T.GOAL)) return y - 1;
   }
   return -1;
@@ -734,14 +870,15 @@ function exportText(): string {
   const all: Record<string, StageDef> = { ...CUSTOM_STAGES, ...drafts };
   const keys = Object.keys(all)
     .map(Number)
-    .filter((k) => k >= 1 && k < BOSS_STAGE)
+    .filter((k) => k >= 1 && k < TRUE_FINAL_STAGE && !isBossStage(k))
     .sort((a, b) => a - b);
   // 1行1列で見やすい JSON にする
   const parts = keys.map((k) => {
     const d = all[String(k)];
     const rows = d.rows.map((r) => `      ${JSON.stringify(r)}`).join(',\n');
     const es = d.ents.map((e) => `      ${JSON.stringify(e)}`).join(',\n');
-    return `  "${k}": {\n    "rows": [\n${rows}\n    ],\n    "ents": [${es ? `\n${es}\n    ` : ''}]\n  }`;
+    const ex = (d.dark ? `,\n    "dark": true` : '') + (d.chase ? `,\n    "chase": ${JSON.stringify(d.chase)}` : '');
+    return `  "${k}": {\n    "rows": [\n${rows}\n    ],\n    "ents": [${es ? `\n${es}\n    ` : ''}]${ex}\n  }`;
   });
   return `{\n${parts.join(',\n')}\n}\n`;
 }
@@ -828,6 +965,7 @@ $('ed-clear').addEventListener('click', () => {
   grid[13][w - 4] = 'G';
   grid[12][w - 4] = 'G';
   ents = [];
+  extra = {};
   selected = -1;
   commit();
 });
@@ -868,5 +1006,6 @@ window.addEventListener('keydown', (e) => {
 buildPalette();
 setTool('#');
 const lastStage = Number(localStorage.getItem(LAST_KEY) ?? '1');
-loadStage(lastStage >= 1 && lastStage < BOSS_STAGE ? lastStage : 1);
+buildExtraBox();
+loadStage(lastStage >= 1 && lastStage < TRUE_FINAL_STAGE && !isBossStage(lastStage) ? lastStage : 1);
 

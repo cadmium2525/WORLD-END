@@ -135,6 +135,50 @@ export class Sound {
         this.tone(880, 880, 0.08, 'square', 0.15);
         this.tone(660, 660, 0.08, 'square', 0.15, 0.1);
         break;
+      // ---- 101面以降のギミック ----
+      case 'spring':
+        this.tone(200, 900, 0.18, 'square', 0.2);
+        break;
+      case 'airjump':
+        this.tone(500, 1100, 0.1, 'triangle', 0.22);
+        break;
+      case 'orb':
+        this.tone(1200, 1800, 0.08, 'sine', 0.2);
+        this.tone(1800, 2400, 0.08, 'sine', 0.15, 0.06);
+        break;
+      case 'key':
+        [988, 1319, 1568].forEach((f, i) => this.tone(f, f, 0.08, 'square', 0.16, i * 0.06));
+        break;
+      case 'door':
+        this.noise(0.25, 0.25, 600);
+        this.tone(160, 90, 0.25, 'square', 0.2);
+        break;
+      case 'grav':
+        this.tone(300, 1200, 0.2, 'sine', 0.22);
+        break;
+      case 'icicle':
+        this.tone(2400, 2200, 0.15, 'triangle', 0.1);
+        break;
+      case 'thud':
+        this.noise(0.2, 0.3, 500);
+        this.tone(70, 40, 0.2, 'square', 0.25);
+        break;
+      case 'laser':
+        this.tone(1400, 700, 0.12, 'sawtooth', 0.08);
+        break;
+      case 'beam':
+        this.tone(900, 200, 0.45, 'sawtooth', 0.22);
+        break;
+      case 'pillar':
+        this.noise(0.25, 0.35, 1500);
+        break;
+      case 'fbosshit':
+        this.tone(900, 180, 0.25, 'square', 0.3);
+        this.noise(0.18, 0.3, 4000);
+        break;
+      case 'transform':
+        for (let i = 0; i < 4; i++) this.tone(200 + i * 150, 60, 0.3, 'sawtooth', 0.2, i * 0.15);
+        break;
       case 'select':
         this.tone(700, 1000, 0.06, 'square', 0.15);
         break;
@@ -145,7 +189,7 @@ export class Sound {
   }
 
   // ---------- BGM ----------
-  /** track: 0..9 = ワールド, 10 = ノーセーブ区間, 11 = ボス, 12 = タイトル, -1 = 停止 */
+  /** track: 0..9 = ワールド, 10 = ノーセーブ区間, 11 = ボス, 12 = タイトル, 13..17 = ワールド11〜15, 18 = 200面ボス, -1 = 停止 */
   playBgm(track: number) {
     if (track === this.bgmTrack) return;
     this.bgmTrack = track;
@@ -171,7 +215,7 @@ export class Sound {
       return;
     }
     const tr = this.bgmTrack;
-    const bpm = tr === 11 ? 168 : tr === 10 ? 150 : tr === 12 ? 96 : 116 + tr * 4;
+    const bpm = tr === 11 || tr === 18 ? 168 : tr === 10 ? 150 : tr === 12 ? 96 : tr >= 13 ? [132, 112, 144, 104, 156][tr - 13] : 116 + tr * 4;
     const stepDur = 60 / bpm / 4;
     while (this.nextNoteTime < c.currentTime + 0.2) {
       this.playStep(tr, this.step, this.nextNoteTime, stepDur);
@@ -195,12 +239,15 @@ export class Sound {
   }
 
   private playStep(tr: number, s: number, t: number, sd: number) {
-    const minor = tr >= 3;
-    const scale = minor ? [0, 3, 5, 7, 10, 12, 15, 17] : [0, 2, 4, 7, 9, 12, 14, 16];
-    const roots = tr === 11 ? [0, 0, 1, 1, -2, -2, -1, -1] : minor ? [0, -4, -2, -5] : [0, 5, -3, 7];
-    const base = tr === 11 ? 45 : 48 + (tr % 5);
+    const minor = tr >= 3 && tr !== 13;
+    // 13〜17: ワールド11〜15（天空=長調、氷=和声的短音階、工場=短調、深淵=暗い音階、終焉=半音を含む）
+    const scale =
+      tr === 15 ? [0, 2, 3, 7, 8, 12, 14, 15] : tr === 16 ? [0, 1, 5, 7, 10, 12, 13, 17] : tr === 17 || tr === 18 ? [0, 1, 4, 6, 7, 12, 13, 16] : minor ? [0, 3, 5, 7, 10, 12, 15, 17] : [0, 2, 4, 7, 9, 12, 14, 16];
+    const boss = tr === 11 || tr === 18;
+    const roots = boss ? [0, 0, 1, 1, -2, -2, -1, -1] : minor ? [0, -4, -2, -5] : [0, 5, -3, 7];
+    const base = boss ? (tr === 18 ? 43 : 45) : 48 + (tr % 5);
     const bar = Math.floor(s / 16);
-    const root = roots[tr === 11 ? Math.floor(s / 8) % 8 : bar % roots.length];
+    const root = roots[boss ? Math.floor(s / 8) % 8 : bar % roots.length];
     const midi = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
     // ベース
     if (s % 4 === 0 || (tr >= 10 && s % 2 === 0)) {
