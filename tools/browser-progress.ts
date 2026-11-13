@@ -211,7 +211,7 @@ try {
   }
   await until("g.mode === 'play' && g.stage === 200");
   check('(f) 199面までに結果画面は出ない', !sawResultEarly && !(await visible('scr-result')));
-  check('(f) 200面の HUD が FINAL・「20 / 20」', (await text('hud-stage')) === 'FINAL' && (await text('hud-run')) === '20 / 20');
+  check('(f) 200面の HUD が「STAGE 200（FINAL）」・「20 / 20」', (await text('hud-stage')) === 'STAGE 200（FINAL）' && (await text('hud-run')) === '20 / 20');
   check('(g) 181〜200区間が公式記録として進行中', await g('g.run.valid && g.run.segment === 181'), await g('g.run.reason'));
   await until("g.mode === 'result'");
   const title = await text('result-title');
