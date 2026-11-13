@@ -494,9 +494,11 @@ const orbChain: Beat = (g, d) => {
   const G = g.G;
   g.flat(3);
   const x0 = g.x;
-  const n = 2 + Math.min(d, 1);
+  // オーブ2つ。難しいほど2つ目が低く（取るタイミングが厳しく）、下の穴にトゲの天井
+  const n = 2;
   g.pit(6 + (n - 1) * 4);
-  for (let i = 0; i < n; i++) g.ents.push({ k: 'orb', x: x0 + 2 + i * 4, y: G - 4 });
+  for (let i = 0; i < n; i++) g.ents.push({ k: 'orb', x: x0 + 2 + i * 4, y: G - 4 + (d >= 2 && i === 1 ? 1 : 0) });
+  if (d >= 1) for (let k = 3; k < 6; k++) g.set(x0 + k, G - 9, T.SPIKE_DOWN);
   g.flat(3);
 };
 
