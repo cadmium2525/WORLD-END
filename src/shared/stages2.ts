@@ -982,17 +982,17 @@ const tLift: Band = (t, d, r) => {
   t.x = lx + 1;
 };
 
-/** 足場の上につらら */
+/** 次の足場の裏につららが下がっている（揺れたら少し待ってから跳ぶ） */
 const tIcicle: Band = (t, d, r) => {
   const n = 3 + Math.min(d, 1);
   for (let i = 0; i < n; i++) {
-    const nx = stepX(t, 4, r);
-    const nu = t.u + (d >= 2 ? 3 : 2);
-    t.ledge(nx, nx + 3, nu - 1, T.SOLID);
-    t.set(nx + 1 + (i % 2), nu + 4, T.SOLID);
-    t.set(nx + 1 + (i % 2), nu + 3, T.ICICLE);
+    const nx = stepX(t, 3, r, 3, 4);
+    const nu = t.u + 2;
+    t.ledge(nx, nx + 2, nu - 1, T.SOLID);
+    // 足場の奥側の端の裏に、つらら
+    if (i % 2 === 0 || d >= 1) t.set(nx > t.x ? nx + 2 : nx, nu - 2, T.ICICLE);
     t.u = nu;
-    t.x = nx + (i % 2 ? 0 : 3);
+    t.x = nx + 1;
   }
 };
 
@@ -1027,21 +1027,21 @@ export const DESIGN: StageDesign[] = [
   D('normal', 'spring', 'springWall.0 gapRun.0 springPit.0', 'バネの導入。押しっぱなしで高く跳ぶ'),
   D('precise', 'spring', 'springLow.0 springWall.1 springLow.1', 'トゲ天井の下ではジャンプを押さずに低く跳ねる'),
   D('normal', 'wind', 'windTail.0 gapRun.0 windLift.0', '風の導入。追い風と上昇気流'),
-  D('climb', 'wind', 'tZig.0 tWind.0 tZig.1 tWind.1', '雲と上昇気流で空へ登る'),
+  D('climb', 'wind', 'tZig.0 tWind.0 tZig.1 tWind.1 tZig.1', '雲と上昇気流で空へ登る'),
   D('normal', 'wind', 'windHead.0 windStones.0 cloudHop.0 windLift.1', '向かい風。止まると押し戻される'),
-  D('rush', 'walker', 'walkerGroup.1 springPit.1 flyerPit.1 springSteps.0 walkerGroup.1', '敵の群れとバネの段差'),
+  D('rush', 'walker', 'walkerGroup.1 springPit.1 flyerPit.1 springSteps.0 walkerGroup.1 windTail.1', '敵の群れとバネの段差'),
   D('scroll', 'wall', 'gapRun.0 spikeHop.0 cloudHop.0 gapRun.1', '迫る壁の導入（ゆっくり）', { chase: wall(200, 200) }),
   D('puzzle', 'switch', 'switchBridge.0 springSteps.1 switchBack.0 springPit.0', 'スイッチで道を切り替えてバネへ'),
-  D('normal', 'cloud', 'cloudHop.1 windTail.1 cloudHop.2 springLow.1', '雲の足場を渡る'),
-  D('climb', 'spring', 'tSpring.0 tSpring.1 tZig.1', 'バネのはしご'),
+  D('normal', 'cloud', 'cloudHop.1 windTail.1 cloudHop.2 springLow.1 springWall.1', '雲の足場を渡る'),
+  D('climb', 'spring', 'tSpring.0 tSpring.1 tZig.1 tWind.0', 'バネのはしご'),
   D('precise', 'wind', 'windStones.2 windHead.2', '向かい風の中、1マスの足場'),
-  D('normal', 'spring', 'springSteps.1 windLift.2 windHead.1 springPit.1', 'バネと風の組み合わせ'),
-  D('rush', 'turret', 'turretRow.1 windHead.1 flyerPit.2 walkerGroup.2 windTail.1', '向かい風の中の砲台'),
+  D('normal', 'spring', 'springSteps.1 windLift.2 windHead.1 springPit.1 cloudHop.1', 'バネと風の組み合わせ'),
+  D('rush', 'turret', 'turretRow.1 windHead.1 flyerPit.2 walkerGroup.2 windTail.1 springPit.1', '向かい風の中の砲台'),
   D('scroll', 'wind', 'windTail.1 springPit.1 cloudHop.1 gapRun.1 windStones.1', '風に乗って壁から逃げる', { chase: wall(240) }),
   D('climb', 'wind', 'tWind.1 tSpring.1 tZig.2 tWind.2', '気流とバネで高みへ'),
-  D('puzzle', 'wind', 'switchBridge.1 windLift.1 switchBack.1 springWall.2', 'スイッチと上昇気流'),
+  D('puzzle', 'wind', 'switchBridge.1 windLift.1 switchBack.1 springWall.2 windHead.1', 'スイッチと上昇気流'),
   D('normal', 'spring', 'springLow.2 windHead.2 cloudHop.2 springSteps.2 windTail.1 gapRun.2', '天空の総まとめ（長い）'),
-  D('precise', 'spring', 'springLow.2 windLift.2 springPit.2', '短く難しいバネ'),
+  D('precise', 'spring', 'springLow.2 windLift.2 springPit.2 springSteps.1', '短く難しいバネ'),
   D('scroll', 'spring', 'springWall.1 windHead.1 springLow.1 windStones.2 cloudHop.2', '壁に追われながら向かい風', { chase: wall(250) }),
   D('climb', 'spring', 'tZig.1 tSpring.2 tLift.1 tCrumble.1 tSpring.2', '天空の頂上へ'),
 
@@ -1051,17 +1051,17 @@ export const DESIGN: StageDesign[] = [
   D('climb', 'ice', 'tZig.0 tIce.0 tIce.1', '氷の足場を登る'),
   D('normal', 'crusher', 'crusherHall.0 gapRun.0 crusherHall.0', '圧殺ブロックの導入。止まらずに走り抜ける'),
   D('scroll', 'wall', 'iceRun.1 crusherHall.1 gapRun.1 iceIslands.0', '氷の上で壁に追われる', { chase: wall(220) }),
-  D('rush', 'walker', 'walkerGroup.1 iceRun.1 turretRow.1 crusherStairs.0', 'すべる床の上の敵'),
+  D('rush', 'walker', 'walkerGroup.1 iceRun.1 turretRow.1 crusherStairs.0 iceIslands.1', 'すべる床の上の敵'),
   D('normal', 'icicle', 'icicleRun.0 gapRun.0 icicleRun.0', 'つららの導入。真下で止まらない'),
   D('puzzle', 'switch', 'switchBridge.0 iceIslands.1 switchBack.0 crusherStairs.0', 'スイッチと氷の小島'),
   D('climb', 'icicle', 'tIcicle.0 tIce.1 tIcicle.1', 'つららの下を登る'),
-  D('precise', 'crusher', 'crusherHall.2 iceIslands.2', '圧殺ブロックの下で小さく跳ぶ'),
-  D('normal', 'ice', 'crusherStairs.1 iceStairs.1 icicleRun.1 iceRun.2', '氷の宮殿の組み合わせ'),
+  D('precise', 'crusher', 'crusherHall.2 iceIslands.2 crusherHall.1', '圧殺ブロックの下で小さく跳ぶ'),
+  D('normal', 'ice', 'crusherStairs.1 iceStairs.1 icicleRun.1 iceRun.2 iceRun.1', '氷の宮殿の組み合わせ'),
   D('scroll', 'icicle', 'icicleRun.1 iceRun.2 crusherHall.1 iceStairs.1 gapRun.1', 'つららと壁', { chase: wall(240) }),
-  D('rush', 'flyer', 'flyerPit.1 crusherHall.1 walkerGroup.2 icicleRun.2 turretRow.1', '敵と圧殺ブロック'),
+  D('rush', 'flyer', 'flyerPit.1 crusherHall.1 walkerGroup.2 icicleRun.2 turretRow.1 crusherStairs.1', '敵と圧殺ブロック'),
   D('climb', 'crumble', 'tIce.2 tIcicle.1 tCrumble.1 tIce.2', '崩れる氷柱を登る'),
-  D('puzzle', 'crusher', 'switchBridge.1 crusherHall.2 switchBack.1 iceIslands.2', 'スイッチと圧殺ブロック'),
-  D('normal', 'icicle', 'iceIslands.2 crusherStairs.1 platRide.1 icicleRun.2', '移動床と氷'),
+  D('puzzle', 'crusher', 'switchBridge.1 crusherHall.2 switchBack.1 iceIslands.2 gapRun.1', 'スイッチと圧殺ブロック'),
+  D('normal', 'icicle', 'iceIslands.2 crusherStairs.1 platRide.1 icicleRun.2 iceRun.1', '移動床と氷'),
   D('precise', 'icicle', 'iceStairs.2 icicleRun.2 crusherHall.2', '氷の階段とつらら'),
   D('scroll', 'crusher', 'crusherHall.2 iceIslands.1 icicleRun.2 iceRun.2', '圧殺ブロックの下を壁から逃げる', { chase: wall(250) }),
   D('rush', 'turret', 'turretRow.2 iceRun.2 walkerGroup.2 crumbleRun.1 icicleRun.2', '氷上の総攻撃'),
@@ -1071,22 +1071,22 @@ export const DESIGN: StageDesign[] = [
   D('normal', 'conveyor', 'convRun.0 gapRun.0 convRun.0', 'ベルトコンベアの導入'),
   D('climb', 'conveyor', 'tConv.0 tZig.1 tConv.1', 'コンベアの足場を登る'),
   D('normal', 'laser', 'laserGates.0 spikeHop.0 laserGates.0', 'レーザーの導入。点滅の予兆を見て通る'),
-  D('rush', 'walker', 'walkerGroup.1 convRun.1 turretRow.1 laserHop.0', 'コンベアの上の敵'),
+  D('rush', 'walker', 'walkerGroup.1 convRun.1 turretRow.1 laserHop.0 convIslands.0', 'コンベアの上の敵'),
   D('precise', 'laser', 'laserHop.1 laserGates.1', '低いレーザーは跳ぶ・高いレーザーは跳ばない'),
   D('normal', 'saw', 'sawFloor.0 gapRun.0 sawPit.0', '回転ノコギリの導入'),
   D('scroll', 'conveyor', 'convRun.1 sawPit.1 laserGates.1 gapRun.1', '工場のラインを壁から逃げる', { chase: wall(230) }),
   D('puzzle', 'switch', 'switchBridge.0 convIslands.0 switchBack.0 laserHop.1', 'スイッチとコンベアの島'),
   D('climb', 'laser', 'tLaser.0 tSaw.0 tConv.1 tLaser.1', '縦穴を横切るレーザーとノコギリ'),
-  D('normal', 'saw', 'sawOrbit.0 convIslands.1 laserGates.1 sawPit.1', '工場の組み合わせ'),
+  D('normal', 'saw', 'sawOrbit.0 convIslands.1 laserGates.1 sawPit.1 laserHop.1', '工場の組み合わせ'),
   D('precise', 'saw', 'sawOrbit.1 sawPit.2', '回るノコギリの隙を突く'),
-  D('rush', 'flyer', 'flyerPit.1 laserHop.1 walkerGroup.2 sawFloor.1 turretRow.2', '敵とレーザー'),
-  D('normal', 'conveyor', 'convRun.2 sawFloor.2 laserGates.2 platRide.1', '逆走コンベアとノコギリ'),
+  D('rush', 'flyer', 'flyerPit.1 laserHop.1 walkerGroup.2 sawFloor.1 turretRow.2 convRun.1', '敵とレーザー'),
+  D('normal', 'conveyor', 'convRun.2 sawFloor.2 laserGates.2 platRide.1 sawPit.1', '逆走コンベアとノコギリ'),
   D('scroll', 'saw', 'sawPit.1 convRun.2 laserHop.1 convIslands.1', 'ノコギリと壁', { chase: wall(240) }),
   D('climb', 'saw', 'tSaw.1 tLift.1 tSaw.1 tZig.2', '工場の煙突'),
-  D('puzzle', 'saw', 'switchBridge.1 sawOrbit.1 switchBack.1 convIslands.2', 'スイッチとノコギリ'),
+  D('puzzle', 'saw', 'switchBridge.1 sawOrbit.1 switchBack.1 convIslands.2 laserGates.1', 'スイッチとノコギリ'),
   D('normal', 'laser', 'laserGates.2 sawOrbit.1 convRun.2 sawFloor.2 laserHop.1', '工場の総まとめ（長い）'),
   D('precise', 'conveyor', 'convIslands.2 laserGates.2 sawPit.2', '短く難しい工場'),
-  D('rush', 'turret', 'walkerGroup.2 sawFloor.2 turretRow.2 laserGates.2 flyerPit.2', '工場の総攻撃'),
+  D('rush', 'turret', 'walkerGroup.2 sawFloor.2 turretRow.2 laserGates.2 flyerPit.2 convIslands.1', '工場の総攻撃'),
   D('climb', 'conveyor', 'tConv.2 tLaser.1 tCrumble.1 tConv.2 tWind.1', '工場の塔'),
 
   // ---------- ワールド14 深淵（オーブ・暗闇・溶岩）----------
@@ -1094,18 +1094,18 @@ export const DESIGN: StageDesign[] = [
   D('precise', 'orb', 'orbChain.0 orbWall.0', 'オーブを続けて使う'),
   D('dark', 'dark', 'gapRun.0 spikeHop.0 platRide.0 gapRun.1', '暗闇の導入（見覚えのある地形で）', { dark: true }),
   D('climb', 'lava', 'tZig.0 tZig.1 tCrumble.0 tZig.1', 'せり上がる溶岩の導入', { chase: lava(100, 240) }),
-  D('normal', 'orb', 'orbWall.1 orbChain.1 cloudHop.1', 'オーブで壁と穴を越える'),
+  D('normal', 'orb', 'orbWall.1 orbChain.1 cloudHop.1 orbGap.1', 'オーブで壁と穴を越える'),
   D('dark', 'orb', 'orbGap.1 spikeHop.1 orbChain.1 crumbleRun.1', '暗闇で光るオーブを頼りに', { dark: true }),
-  D('rush', 'walker', 'walkerGroup.1 orbGap.1 flyerPit.1 turretRow.1', '深淵の敵'),
+  D('rush', 'walker', 'walkerGroup.1 orbGap.1 flyerPit.1 turretRow.1 walkerGroup.2', '深淵の敵'),
   D('scroll', 'wall', 'orbGap.1 gapRun.1 orbWall.1 crumbleRun.1', 'オーブで壁から逃げる', { chase: wall(230) }),
   D('climb', 'crumble', 'tOrb.1 tCrumble.1 tOrb.1 tZig.2', '溶岩から崩れる足場で逃げる', { chase: lava(90) }),
-  D('puzzle', 'switch', 'switchBridge.0 orbChain.1 switchBack.0 orbWall.1', 'スイッチとオーブ'),
-  D('dark', 'laser', 'orbChain.2 sawPit.1 orbWall.2 laserGates.1', '暗闇のノコギリとレーザー', { dark: true }),
+  D('puzzle', 'switch', 'switchBridge.0 orbChain.1 switchBack.0 orbWall.1 orbGap.1', 'スイッチとオーブ'),
+  D('dark', 'laser', 'orbChain.2 sawPit.1 orbWall.2 laserGates.1 crumbleRun.1', '暗闇のノコギリとレーザー', { dark: true }),
   D('precise', 'spring', 'orbWall.2 springLow.1 orbChain.2', 'オーブとバネ'),
-  D('normal', 'ice', 'orbGap.1 iceIslands.1 orbChain.1 convRun.1', '氷とコンベアとオーブ'),
+  D('normal', 'ice', 'orbGap.1 iceIslands.1 orbChain.1 convRun.1 windHead.1', '氷とコンベアとオーブ'),
   D('climb', 'wind', 'tOrb.2 tWind.1 tOrb.1 tLift.1', '溶岩の縦穴（気流と移動床）', { chase: lava(130) }),
-  D('dark', 'crusher', 'crusherHall.1 orbGap.1 icicleRun.1 orbChain.2', '暗闇の氷の宮殿', { dark: true }),
-  D('rush', 'flyer', 'flyerPit.2 orbGap.1 walkerGroup.2 orbWall.1 turretRow.2', '敵とオーブ'),
+  D('dark', 'crusher', 'crusherHall.1 orbGap.1 icicleRun.1 orbChain.2 spikeHop.1', '暗闇の氷の宮殿', { dark: true }),
+  D('rush', 'flyer', 'flyerPit.2 orbGap.1 walkerGroup.2 orbWall.1 turretRow.2 gapRun.2', '敵とオーブ'),
   D('scroll', 'wall', 'orbChain.1 windTail.1 orbGap.1 sawPit.1 crumbleRun.1', '深淵の逃走', { chase: wall(210) }),
   D('dark', 'orb', 'orbWall.2 laserHop.1 orbChain.2 spikeHop.2 crumbleRun.2 gapRun.2', '真っ暗なオーブの道', { dark: true }),
   D('precise', 'saw', 'orbChain.2 sawOrbit.1', 'オーブとノコギリ'),
@@ -1121,14 +1121,14 @@ export const DESIGN: StageDesign[] = [
   D('dark', 'key', 'keyHigh.1 crusherHall.1 keyLow.1', '暗闇で鍵を探す', { dark: true }),
   D('rush', 'turret', 'walkerGroup.2 gravCeil.1 flyerPit.2 turretRow.2 laserHop.1', '終焉の総攻撃'),
   D('normal', 'grav', 'gravWeave.1 sawPit.1 windLift.1 iceIslands.1', '重力反転と各地のギミック'),
-  D('climb', 'conveyor', 'tConv.1 tSaw.1 tOrb.1 tLaser.1 tIcicle.1', '溶岩の塔（工場と氷）', { chase: lava(130) }),
+  D('climb', 'conveyor', 'tConv.1 tSaw.1 tOrb.1 tLaser.1 tIcicle.1', '溶岩の塔（工場と氷）', { chase: lava(75) }),
   D('puzzle', 'grav', 'keyHigh.2 gravCeil.1 keyLow.1 laserGates.1', '鍵と重力反転'),
   D('precise', 'spring', 'gravWeave.2 springLow.2', '反転とバネの精密'),
   D('scroll', 'crusher', 'springPit.1 crusherHall.1 laserHop.1 gravCeil.1 orbChain.1', '全ワールドを駆け抜ける', { chase: wall(250) }),
   D('dark', 'grav', 'gravWeave.1 orbGap.1 icicleRun.2 sawOrbit.1', '暗闇の重力反転', { dark: true }),
   D('normal', 'wind', 'windHead.2 iceIslands.2 convIslands.1 gravCeil.2 orbWall.1', '終焉の道（長い）'),
   D('puzzle', 'switch', 'keyLow.1 switchBridge.1 keyHigh.2 switchBack.1', '鍵とスイッチ'),
-  D('climb', 'wind', 'tWind.2 tIce.2 tSaw.2 tSpring.2 tOrb.2 tCrumble.2', '最後の塔', { chase: lava(130) }),
+  D('climb', 'wind', 'tWind.2 tIce.2 tSaw.2 tSpring.2 tOrb.2 tCrumble.2', '最後の塔', { chase: lava(105) }),
   D('precise', 'orb', 'gravWeave.2 orbChain.2 sawPit.2', '最後の精密面'),
   D('scroll', 'wall', 'springLow.2 windTail.1 iceRun.2 crusherHall.2 convRun.2 laserGates.2 gravCeil.2 orbChain.2', '世界の終わりへの逃走', { chase: wall(250) }),
 ];
