@@ -127,6 +127,11 @@ ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://cadmium25
 npm run deploy
 ```
 
+- `npm run deploy`（と `npm run dev`）は、最初に区間ごとのステージのハッシュを `worker/src/stages-version.json` に書き出します
+  （`tools/stages-version.ts`。区間開始時の CPU 時間を節約するため）。リポジトリのルートで `npm install` を済ませておいてください
+- `npx wrangler deploy` を直接実行するとこの書き出しが行われません。ステージを変えたあとは `npm run deploy` を使ってください
+  （古いままでも、今のステージと同じクライアントは受け付けますが、区間開始のたびに計算が走ります）
+
 初回は workers.dev のサブドメイン名（例：`cadmium2525`）を決めるよう聞かれることがあります。
 完了すると URL が表示されます：
 

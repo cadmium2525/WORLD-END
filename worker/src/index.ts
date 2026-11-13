@@ -13,6 +13,8 @@ import { validateName } from '../../src/shared/name';
 import { FINAL_STAGE, SEGMENT_STARTS, needsTicket, segmentEnd } from '../../src/shared/progress';
 import { decodeInputs, verifyStage } from '../../src/shared/replay';
 import { stagesVersion } from '../../src/shared/stages';
+// 区間ごとのステージのハッシュ（deploy / dev の前に tools/stages-version.ts で作る。CPU 時間の節約）
+import EMBEDDED_VERSIONS from './stages-version.json';
 
 export interface Env {
   DB: D1Database;
@@ -190,6 +192,18 @@ async function readTicket(env: Env, secret: string, raw: string): Promise<Ticket
 
 // ---------------- ハンドラ ----------------
 
+const embedded = EMBEDDED_VERSIONS as Record<string, string>;
+/**
+ * クライアントの区間のステージのハッシュがサーバーと一致するか。
+ * 埋め込んだ値と同じなら計算しない。違うときだけ、その場で計算して確かめる
+ * （埋め込みが古いまま deploy されても、今のステージと同じクライアントを拒否しない）
+ */
+function versionMatches(seg: number, ver: unknown): boolean {
+  if (typeof ver !== 'string') return false;
+  if (ver === embedded[String(seg)]) return true;
+  return ver === stagesVersion(seg, segmentEnd(seg));
+}
+
 async function startRun(req: Request, env: Env): Promise<Response> {
   const b = await body<{ name?: string; ver?: string; segment?: number; ticket?: string }>(req);
   if (!b) return fail(req, env, 'bad_request');
@@ -198,8 +212,10 @@ async function startRun(req: Request, env: Env): Promise<Response> {
   if (!Number.isInteger(seg) || !SEGMENT_STARTS.includes(seg)) return fail(req, env, 'bad_segment');
   const secret = ticketSecret(env);
   if (!secret) return fail(req, env, 'ticket_key_missing', 503);
-  // 区間の面データがサーバーと一致しているか（その区間の分だけ照合）
-  if (b.ver !== stagesVersion(seg, segmentEnd(seg))) return fail(req, env, 'version_mismatch', 409);
+  // 区間の面データがサーバーと一致しているか（その区間の分だけ照合）。
+  // ふだんは埋め込んだ値と比べるだけ（区間20面の生成とハッシュは冷えた状態で 7〜11ms かかるため）。
+  // 埋め込んだ値と違うときだけ、その場で計算して確かめる（埋め込みが古くても正しく判定する）
+  if (!versionMatches(seg, b.ver)) return fail(req, env, 'version_mismatch', 409);
   const name = validateName(b.name ?? '');
   if (name === null) return fail(req, env, 'bad_name');
 

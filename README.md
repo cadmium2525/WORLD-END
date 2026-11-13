@@ -149,6 +149,7 @@ npm run preview-stage -- 37    # 37面の地形をテキストで表示
 npm run diversity              # 101〜199面の多様性（型・ギミック・長さ）を表示し、似た面の組を警告
 npm run stage-hash             # 1〜100面が変更前（tools/baseline）とバイト単位で同一か確認
 npm run determinism            # シミュレーションの決定論（clone・再生の一致）を確認
+npm run stages-version         # Worker に埋め込む区間ごとのステージのハッシュが最新か確認（更新は tools/stages-version.ts write）
 npm run e2e                    # ローカルサーバーとの結合テスト（全6区間・チケット・同時クリア。docs参照）
 npx tsx tools/browser-progress.ts   # ブラウザ（Playwright）での進行ルールのテスト（docs参照）
 ```

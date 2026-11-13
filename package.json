@@ -14,6 +14,7 @@
     "diversity": "tsx tools/diversity.ts",
     "determinism": "tsx tools/determinism.ts",
     "stage-hash": "tsx tools/stage-hash.ts check",
+    "stages-version": "tsx tools/stages-version.ts check",
     "e2e": "tsx tools/e2e.ts"
   },
   "devDependencies": {

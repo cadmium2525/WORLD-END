@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "cd .. && npx tsx tools/stages-version.ts write",
     "dev": "wrangler dev",
+    "predeploy": "cd .. && npx tsx tools/stages-version.ts write",
     "deploy": "wrangler deploy",
     "db:init:local": "wrangler d1 execute world-end --local --file=./schema.sql",
     "db:init:remote": "wrangler d1 execute world-end --remote --file=./schema.sql",
