@@ -821,7 +821,13 @@ function stepX(t: Tower, w: number, r: Rng, min = 3, max = 5): number {
   const k = r.range(min, max);
   let c = t.x + dir * k;
   if (c - (w >> 1) < 1 || c - (w >> 1) + w - 1 > t.W - 2) c = t.x - dir * k;
-  return t.clampX(c - (w >> 1), w);
+  let nx = t.clampX(c - (w >> 1), w);
+  // 壁際で寄せられて今の足場の真上に重なるなら、反対側へ
+  if (Math.abs(nx + (w >> 1) - t.x) < Math.max(3, w)) {
+    const c2 = nx + (w >> 1) > t.x ? t.x - Math.max(3, w) : t.x + Math.max(3, w);
+    nx = t.clampX(c2 - (w >> 1), w);
+  }
+  return nx;
 }
 
 /** すり抜け床（雲）のジグザグ */
@@ -901,9 +907,9 @@ const tIce: Band = (t, d, r) => {
 const tConv: Band = (t, d, r) => {
   const n = 3 + Math.min(d, 2);
   for (let i = 0; i < n; i++) {
-    const nx = stepX(t, 4, r, 4, 5);
+    const nx = stepX(t, 3, r, 4, 5);
     const nu = t.u + 2;
-    t.ledge(nx, nx + 3, nu - 1, nx > t.x ? T.CONV_L : T.CONV_R);
+    t.ledge(nx, nx + 2, nu - 1, nx > t.x ? T.CONV_L : T.CONV_R);
     t.u = nu;
     t.x = nx + 1;
   }

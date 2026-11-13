@@ -259,15 +259,7 @@ function fieldScore(L: Level, f: Int32Array, s: Sim): number {
 
 function scoreNew(L: Level, F: Fields, s: Sim): number {
   const fb = s.fboss;
-  if (fb) {
-    let v = (fb.maxHp - fb.hp) * 1e7;
-    const bcx = fb.x + fb.w / 2;
-    const pcx = s.p.x + PW / 2;
-    v -= Math.abs(bcx - pcx) / 8;
-    v -= s.p.y / 16;
-    if (fb.state === 'dying' || fb.state === 'dead') v += 1e9;
-    return v;
-  }
+  if (fb) return fbossScore(s);
   let field = F.goal;
   let progress = 0;
   if (F.keys.length) {
@@ -284,6 +276,53 @@ function scoreNew(L: Level, F: Fields, s: Sim): number {
   }
   let v = progress * 1e8 + fieldScore(L, field, s);
   if (s.switchOn) v += TS;
+  return v;
+}
+
+/** 200面ボス戦の評価: 体力を減らすほど高く、予兆の出ている攻撃の範囲にいるほど低い */
+function fbossScore(s: Sim): number {
+  const fb = s.fboss!;
+  const p = s.p;
+  let v = (fb.maxHp - fb.hp) * 1e7;
+  if (fb.state === 'dying' || fb.state === 'dead') return v + 1e9;
+  const pcx = p.x + PW / 2;
+  const bcx = fb.x + fb.w / 2;
+  const feet = p.y + PH;
+  const onPlatform = feet <= 11 * TS + 2 * 256;
+  const DANGER = 1e6;
+  switch (fb.state) {
+    case 'tele_slam':
+    case 'slam': {
+      const dx = Math.abs(pcx - (fb.targetX + fb.w / 2));
+      if (dx < fb.w / 2 + 14 * 256) v -= DANGER;
+      v += Math.min(dx, 4 * TS) / 4;
+      break;
+    }
+    case 'stun':
+    case 'recover':
+      v -= Math.abs(bcx - pcx) / 8;
+      v -= p.y / 16;
+      break;
+    case 'tele_beam':
+    case 'beam':
+      if (fb.beamHigh) {
+        if (onPlatform || feet < 14 * TS - 20 * 256) v -= DANGER;
+      } else if (!onPlatform) v -= DANGER / 2 + (feet - 11 * TS);
+      break;
+    case 'tele_pillar':
+    case 'pillar':
+      for (const c of fb.cols) if (pcx > c * TS - 8 * 256 && pcx < (c + 2) * TS + 8 * 256 && !onPlatform) v -= DANGER;
+      break;
+    case 'tele_rain':
+    case 'hover':
+      for (const b of s.bullets) if (Math.abs(b.x + b.w / 2 - pcx) < 14 * 256) v -= DANGER / 4;
+      if (fb.state === 'tele_rain') for (const c of fb.cols) if (Math.abs(c * TS + TS / 2 - pcx) < 14 * 256) v -= DANGER;
+      // 次の攻撃に備えて、ボスの近く・床の上にいる
+      v -= Math.abs(bcx - pcx) / 16;
+      break;
+    default:
+      v -= Math.abs(bcx - pcx) / 16;
+  }
   return v;
 }
 
