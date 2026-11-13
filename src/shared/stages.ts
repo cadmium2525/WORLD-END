@@ -7,6 +7,7 @@
 // チャンクはすべて「左端・右端が地面の高さ G」で始まり終わるため、自由につなげられる。
 
 import { BOSS_STAGE, ROWS, T } from './constants';
+import { FINAL_STAGE, NOSAVE_START } from './progress';
 import type { EntSpec, Level } from './level';
 import { Rng, hashSeed } from './rng';
 import customData from './stage-data.json';
@@ -710,24 +711,35 @@ function bossStage(): Level {
   return finish(g, BOSS_STAGE, 3, G0 - 1, true);
 }
 
+const versionCache = new Map<string, string>();
+
 /**
- * 80〜100面のデータのハッシュ。ゲームとサーバーでステージが食い違っていないかの確認に使う
- * （手作りステージを変えたのにサーバーを更新し忘れると、正しいクリアが検証失敗になるため）
+ * from〜to 面（既定は 80〜200面＝ノーセーブ区間すべて）のデータのハッシュ。
+ * ゲームとサーバーでステージが食い違っていないかの確認に使う
+ * （手作りステージを変えたのにサーバーを更新し忘れると、正しいクリアが検証失敗になるため）。
+ * サーバーは区間の開始時に、その区間（例: 101〜120）の分だけを照合する（Worker の CPU 時間節約）。
+ * 面データは不変なので一度計算したら使い回す。
  */
-export function stagesVersion(): string {
+export function stagesVersion(from = NOSAVE_START, to = FINAL_STAGE): string {
+  const key = `${from}-${to}`;
+  const hit = versionCache.get(key);
+  if (hit !== undefined) return hit;
   let h = 0x811c9dc5;
   const mix = (n: number) => {
     h ^= n & 0xff;
     h = Math.imul(h, 0x01000193) >>> 0;
   };
-  for (let s = 80; s <= BOSS_STAGE; s++) {
+  for (let s = from; s <= to; s++) {
     const L = getStage(s);
     mix(L.w);
+    mix(L.h);
     mix(L.startX);
     mix(L.startY);
     for (let i = 0; i < L.tiles.length; i++) mix(L.tiles[i]);
     const e = JSON.stringify(L.ents);
     for (let i = 0; i < e.length; i++) mix(e.charCodeAt(i));
   }
-  return h.toString(16).padStart(8, '0');
+  const v = h.toString(16).padStart(8, '0');
+  versionCache.set(key, v);
+  return v;
 }

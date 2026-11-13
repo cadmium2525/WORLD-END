@@ -12,8 +12,9 @@ export const VIEW_H = ROWS * TILE; // 272
 
 export const FPS = 60;
 
-export const TOTAL_STAGES = 100;
-export const FINAL_START = 80; // 最後のセーブ地点
+// 面数・セーブ地点などの進行ルールは progress.ts（FINAL_STAGE / segmentStart など）を使う
+export const TOTAL_STAGES = 200;
+/** 100面（ボス面。撃破しても世界は終わらず101面へ進む）。最終面は progress.ts の FINAL_STAGE */
 export const BOSS_STAGE = 100;
 
 // 入力ビット

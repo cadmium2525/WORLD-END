@@ -7,7 +7,7 @@
    │  ① ゲームを読み込む（HTML/JS）
    ├──────────────▶ GitHub Pages（静的ファイルを配るだけ）
    │
-   │  ② 世界は終わった？／80〜100面のクリア記録を送る
+   │  ② 世界は終わった？／80〜200面のクリア記録を送る・チケットを受け取る
    └──────────────▶ Cloudflare Workers（小さなサーバープログラム）
                           │
                           ▼
@@ -18,8 +18,8 @@ GitHub Pages は「ファイルを配るだけ」なので、全員共通の「�
 
 | サービス | 役割 | このゲームでの使い方 |
 | --- | --- | --- |
-| **Workers** | サーバーの処理を書く場所（サーバーレス） | `worker/src/index.ts`。クリア記録（入力ログ）を再生して本物か検証し、最初の1人なら世界を終わらせる |
-| **D1** | SQLite 互換のデータベース | `worker/schema.sql`。世界の状態（1行）、挑戦セッション、クリア記録 |
+| **Workers** | サーバーの処理を書く場所（サーバーレス） | `worker/src/index.ts`。クリア記録（入力ログ）を再生して本物か検証し、区間をクリアしたら次の区間のチケットを発行。200面を最初に検証できた1人なら世界を終わらせる |
+| **D1** | SQLite 互換のデータベース | `worker/schema.sql`。世界の状態（1行）、挑戦セッション（ノーセーブ区間1つ分）、クリア記録 |
 
 ## 無料枠について（費用 0 円で運用するために）
 
@@ -33,6 +33,7 @@ GitHub Pages は「ファイルを配るだけ」なので、全員共通の「�
 - **無料プランのままなら、上限を超えても自動で課金されません**。超えた分のリクエストはエラーになります（＝受付停止）。ゲーム側は通信エラー時に「開始・再開できません」と表示する安全側の作りです。
 - 有料の「Workers Paid」プランに自分で申し込まない限り課金は発生しません。クレジットカード登録も不要です。
 - このゲームのサーバー検証は1面あたり約 1ms（10ms 上限の範囲内）で、全員の画面の状態確認は約2.5分に1回です。
+  区間開始時のステージ照合はその区間（20〜21面）の分だけを計算し、結果は使い回します。チケットの署名・検証（HMAC-SHA256）は1回 1ms 未満です。
 
 ---
 
@@ -92,6 +93,24 @@ npx wrangler secret put ADMIN_TOKEN
 
 `secret` に入れた値はコードや GitHub には残りません（Cloudflare 上で暗号化保存）。**この文字列は自分のメモ帳などに保管してください。**
 
+### 4-2. チケットの署名鍵（TICKET_SECRET）を登録
+
+101面以降のノーセーブ区間を始めるには、直前の区間をクリアしたときにサーバーが発行する **チケット** が必要です。
+チケットが偽造されないよう、サーバーだけが知っている鍵で署名します（HMAC-SHA256）。
+
+```bash
+openssl rand -hex 32          # 例：ランダムな文字列を作る
+npx wrangler secret put TICKET_SECRET
+# → 上の文字列を貼り付けて Enter（16文字以上）
+```
+
+- 未登録の場合は ADMIN_TOKEN を鍵として流用します（動きますが、別々にしておくのがおすすめです）
+- ADMIN_TOKEN も TICKET_SECRET も無い（または16文字未満の）場合、挑戦の開始は `ticket_key_missing`（503）で拒否され、
+  ゲーム画面には「サーバーの設定が不完全です（チケットの署名鍵が未設定）」と表示されます
+- **鍵を変えると、それまでに発行したチケットはすべて無効になります**（その人たちは80面から挑戦し直すまで、101面以降が公式記録の対象外になります）。
+  本番中は変更しないでください
+- テストモードで発行したチケットは本番モード（`MODE = "live"`）では使えません（署名にモードを含めているため）
+
 ### 5. 許可するサイト（ALLOWED_ORIGINS）を確認
 
 `worker/wrangler.toml` の `ALLOWED_ORIGINS` に、ゲームを公開するサイトのオリジンが入っていることを確認します。
@@ -143,7 +162,8 @@ GitHub のリポジトリページで：
 | --- | --- |
 | サーバーのログをリアルタイムで見る | `npx wrangler tail` |
 | 世界の状態を見る | `curl https://<URL>/api/state` |
-| 検証済みクリアの一覧を見る | `curl -H "Authorization: Bearer <ADMIN_TOKEN>" https://<URL>/api/admin/clears` |
+| 検証済みクリア（200面）の一覧を見る | `curl -H "Authorization: Bearer <ADMIN_TOKEN>" https://<URL>/api/admin/clears` |
+| どの区間に何人挑戦中か見る | `npx wrangler d1 execute world-end --remote --command "SELECT segment, status, COUNT(*) FROM sessions GROUP BY segment, status"` |
 | 世界をリセットする（テスト後など） | `curl -X POST -H "Authorization: Bearer <ADMIN_TOKEN>" https://<URL>/api/admin/reset` |
 | DB の中身を直接見る | `npx wrangler d1 execute world-end --remote --command "SELECT * FROM world"` |
 | 設定を変えて再公開 | `wrangler.toml` を編集して `npm run deploy` |
@@ -155,7 +175,7 @@ GitHub のリポジトリページで：
 ```bash
 # ターミナル1：サーバー
 cd worker
-cp .dev.vars.example .dev.vars
+cp .dev.vars.example .dev.vars     # ADMIN_TOKEN と TICKET_SECRET（ローカル用の値）が入っている
 npm install
 npm run db:init:local
 npm run dev            # http://localhost:8787
@@ -166,6 +186,47 @@ VITE_API_URL=http://localhost:8787 npm run dev   # http://localhost:5173
 
 ローカルの DB は `worker/.wrangler/` に保存され、本番には影響しません。
 
+### 結合テスト・ブラウザでの進行テスト
+
+```bash
+# サーバーを「実時間チェックなし」で起動（ボットは人間より速く送るため）
+cd worker && npx wrangler dev --var MIN_TIME_FACTOR:0          # テストモード
+cd worker && npx wrangler dev --var MIN_TIME_FACTOR:0 --var MODE:live   # 本番モードの確認
+
+# 別のターミナルで（リポジトリのルート）
+npm run e2e                           # 全6区間・チケットの拒否・順番飛ばし/偽ログ・（live なら）同時クリアで勝者1人
+npx tsx tools/browser-progress.ts     # ブラウザで進行ルールを確認（テストモードのサーバーが必要。Vite は自動で起動）
+```
+
+- `npm run e2e` は最初に `/api/admin/reset` で世界をリセットします（ローカルの ADMIN_TOKEN `local-admin-token` を使用。別の値なら `npx tsx tools/e2e.ts <URL> <ADMIN_TOKEN>`）
+- ボットの解答作成に数分かかります。解答は `node_modules/.cache/` に保存され、ステージが変わらなければ2回目以降は再利用されます
+
+## 100面版のサーバーからの移行
+
+100面版の D1 を使っている場合は、デプロイの前に1回だけ移行します（`worker/` ディレクトリで）。
+
+```bash
+npm run db:migrate:remote      # ローカルの DB は db:migrate:local
+npx wrangler secret put TICKET_SECRET    # 手順 4-2
+npm run deploy
+```
+
+- 移行は `sessions`（挑戦中のセッション。数時間で消える一時データ）を作り直すだけです。世界の状態（`world`）とクリア記録（`clears`）はそのまま残ります
+- 移行の時点で挑戦中だった人は、次の送信で「チャレンジの有効期限が切れました」となり、その区間は公式記録の対象外になります
+- 新しく作る場合は `npm run db:init:remote`（`schema.sql`）だけで十分です（移行は不要）
+
+## 本番モードへの切り替え
+
+1. テストプレイが終わったら、`worker/wrangler.toml` の `MODE = "test"` を `MODE = "live"` に変更
+2. `TICKET_SECRET` が登録済みか確認：`npx wrangler secret list`
+3. `npm run deploy`
+4. 世界をリセット：`curl -X POST -H "Authorization: Bearer <ADMIN_TOKEN>" https://<URL>/api/admin/reset`
+5. `curl https://<URL>/api/state` が `"mode":"live"` と `"ended":false` を返すことを確認
+6. GitHub の Actions 変数 `ALLOW_DEBUG` を `false` にして Pages を再デプロイ（テスト用の面選択・無敵を無効化）
+
+本番モードでは、200面の検証に成功した最初の1人で世界が終わります（100面のボスでは終わりません）。
+テストモードで発行されたチケットは本番では使えないため、本番で公式記録を狙う人は全員80面から挑戦することになります。
+
 ## トラブルシューティング
 
 - **タイトルに「サーバーに接続できません」と出る**
@@ -174,3 +235,6 @@ VITE_API_URL=http://localhost:8787 npm run dev   # http://localhost:5173
   - 無料枠を使い切った日は翌日（UTC 0時）まで復旧しません
 - **`npm run deploy` で database_id のエラー** → 手順3の `database_id` を `wrangler.toml` に貼ったか確認
 - **`API_URL` を変えたのにゲームに反映されない** → 変数はビルド時に埋め込まれます。Actions を再実行してください
+- **「サーバーの設定が不完全です（チケットの署名鍵が未設定）」と出る** → 手順 4-2 の `TICKET_SECRET`（または ADMIN_TOKEN）を16文字以上で登録
+- **101面以降で「チケットがありません」「チケットが正しくありません」と出る** → 前の区間をサーバーで検証できなかった（通信エラー・一時停止しすぎ・テスト機能の使用など）か、
+  署名鍵やモードを変えた後です。遊ぶことはできますが公式記録の対象外です。公式記録にするには、その区間の前の区間（最終的には80面）から挑戦し直します

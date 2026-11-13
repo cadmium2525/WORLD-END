@@ -128,6 +128,13 @@ select {
   font-weight: normal;
   opacity: 0.85;
 }
+#hud-unofficial {
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.45);
+  font-size: 11px;
+}
 @keyframes pulse {
   50% {
     background: rgba(120, 0, 20, 0.85);

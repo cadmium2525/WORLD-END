@@ -13,6 +13,9 @@ enabled = true
 MODE = "test"
 # ゲームを置くサイトのオリジン（カンマ区切り）。GitHub Pages なら https://ユーザー名.github.io
 ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://cadmium2525.github.io"
+# 秘密情報はここに書かず `npx wrangler secret put <名前>` で登録する（docs/CLOUDFLARE.md）
+#   ADMIN_TOKEN    管理用パスワード（16文字以上）
+#   TICKET_SECRET  101面以降の区間を始めるためのチケットの署名鍵（16文字以上。未設定なら ADMIN_TOKEN を流用）
 
 [[d1_databases]]
 binding = "DB"
