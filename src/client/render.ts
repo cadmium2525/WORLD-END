@@ -238,11 +238,13 @@ export class Renderer {
           case T.ONEWAY:
             if (L.world === 11) {
               // 雲の足場
+              g.fillStyle = '#6a98cc';
+              g.fillRect(x, y, TILE, 7);
               g.fillStyle = '#ffffff';
               g.fillRect(x, y + 1, TILE, 4);
               g.fillRect(x + 2, y, TILE - 4, 6);
-              g.fillStyle = 'rgba(160,200,240,0.8)';
-              g.fillRect(x + 1, y + 5, TILE - 2, 1);
+              g.fillStyle = '#c8dcf0';
+              g.fillRect(x + 1, y + 4, TILE - 2, 1);
             } else {
               g.fillStyle = P.top;
               g.fillRect(x, y, TILE, 4);
@@ -525,16 +527,23 @@ export class Renderer {
           const dir = t === T.WIND_R ? 1 : -1;
           const hv = h2(tx, ty);
           const off = (((frameTime * 2 * dir + (hv % 16)) % 16) + 16) % 16;
-          ctx.fillStyle = 'rgba(255,255,255,0.10)';
+          ctx.fillStyle = 'rgba(60,140,230,0.16)';
           ctx.fillRect(x, y, TILE, TILE);
-          ctx.fillStyle = 'rgba(255,255,255,0.55)';
+          ctx.fillStyle = 'rgba(30,100,200,0.75)';
           ctx.fillRect(x + off, y + 4 + (hv % 8), 6 - (off > 10 ? off - 10 : 0), 1);
+          if ((tx + ty) % 2 === 0) {
+            // 向きの矢印（＞／＜）
+            const ax = x + 8 - 2 * dir;
+            ctx.fillRect(ax, y + 6, 1, 1);
+            ctx.fillRect(ax + dir, y + 7, 1, 2);
+            ctx.fillRect(ax, y + 9, 1, 1);
+          }
         } else if (t === T.WIND_U) {
           const hv = h2(tx, ty);
           const off = (((-frameTime * 3 + (hv % 16)) % 16) + 16) % 16;
-          ctx.fillStyle = 'rgba(200,255,240,0.13)';
+          ctx.fillStyle = 'rgba(40,200,170,0.18)';
           ctx.fillRect(x, y, TILE, TILE);
-          ctx.fillStyle = 'rgba(255,255,255,0.6)';
+          ctx.fillStyle = 'rgba(20,150,130,0.8)';
           ctx.fillRect(x + 3 + (hv % 10), y + off, 1, 5 - (off > 11 ? off - 11 : 0));
         } else if (t === T.CONV_L || t === T.CONV_R) {
           // ベルトの矢印が流れる向きに動く
