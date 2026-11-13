@@ -1,2 +1,4 @@
 # ローカル開発用の秘密情報。.dev.vars にコピーして使う（.dev.vars は git に含めない）
 ADMIN_TOKEN=local-admin-token
+# チケット（101面以降の区間の開始に必要）の署名鍵。16文字以上。未設定なら ADMIN_TOKEN を流用
+TICKET_SECRET=local-ticket-secret-0123456789

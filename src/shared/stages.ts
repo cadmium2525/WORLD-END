@@ -7,6 +7,7 @@
 // チャンクはすべて「左端・右端が地面の高さ G」で始まり終わるため、自由につなげられる。
 
 import { BOSS_STAGE, ROWS, T } from './constants';
+import { FINAL_STAGE, NOSAVE_START } from './progress';
 import type { EntSpec, Level } from './level';
 import { Rng, hashSeed } from './rng';
 import customData from './stage-data.json';
@@ -14,7 +15,7 @@ import { checkDef, defToLevel, type StageDef } from './stageFormat';
 import { buildDesigned, designOf, finalBossStage } from './stages2';
 
 /** 200面（真の最終ボス） */
-export const TRUE_FINAL_STAGE = 200;
+export const TRUE_FINAL_STAGE = FINAL_STAGE;
 
 /** ステージエディタで作った手作りステージ（面番号 → データ）。自動生成より優先される */
 export const CUSTOM_STAGES = customData as unknown as Record<string, StageDef>;
@@ -594,9 +595,10 @@ export function worldOf(stage: number): number {
   return Math.min(10, Math.floor((stage - 1) / 10) + 1);
 }
 
+/** 面の表示名（100面は中ボスなので BOSS、200面が最終の FINAL、それ以外は「ワールド-番号」） */
 export function stageLabel(stage: number): string {
-  if (stage === BOSS_STAGE) return 'FINAL';
-  if (stage === TRUE_FINAL_STAGE) return 'WORLD END';
+  if (stage === BOSS_STAGE) return 'BOSS';
+  if (stage === TRUE_FINAL_STAGE) return 'FINAL';
   if (stage > BOSS_STAGE) return `${worldOf(stage)}-${((stage - 101) % 20) + 1}`;
   return `${worldOf(stage)}-${((stage - 1) % 10) + 1}`;
 }
@@ -726,30 +728,45 @@ function bossStage(): Level {
   return finish(g, BOSS_STAGE, 3, G0 - 1, true);
 }
 
+const versionCache = new Map<string, string>();
+
 /**
- * 80〜200面のデータのハッシュ。ゲームとサーバーでステージが食い違っていないかの確認に使う
- * （手作りステージを変えたのにサーバーを更新し忘れると、正しいクリアが検証失敗になるため）
+ * from〜to 面（既定は 80〜200面＝ノーセーブ区間すべて）のデータのハッシュ。
+ * ゲームとサーバーでステージが食い違っていないかの確認に使う
+ * （手作りステージを変えたのにサーバーを更新し忘れると、正しいクリアが検証失敗になるため）。
+ * サーバーは区間の開始時に、その区間（例: 101〜120）の分だけを照合する（Worker の CPU 時間節約）。
+ * 面の挙動に影響する要素（大きさ・開始位置・タイル・エンティティ・暗闇・迫る壁/溶岩）をすべて含める。
+ * 面データは不変なので一度計算したら使い回す。
  */
-export function stagesVersion(): string {
+export function stagesVersion(from = NOSAVE_START, to = FINAL_STAGE): string {
+  const key = `${from}-${to}`;
+  const hit = versionCache.get(key);
+  if (hit !== undefined) return hit;
   let h = 0x811c9dc5;
   const mix = (n: number) => {
     h ^= n & 0xff;
     h = Math.imul(h, 0x01000193) >>> 0;
   };
-  for (let s = 80; s <= TRUE_FINAL_STAGE; s++) {
+  const mixStr = (t: string) => {
+    for (let i = 0; i < t.length; i++) mix(t.charCodeAt(i));
+  };
+  for (let s = from; s <= to; s++) {
     const L = getStage(s);
     mix(L.w);
+    mix(L.w >> 8);
+    mix(L.h);
+    mix(L.h >> 8);
     mix(L.startX);
+    mix(L.startX >> 8);
     mix(L.startY);
-    if (s > BOSS_STAGE) {
-      // 101面以降は高さ・暗闇・迫る壁も対象
-      mix(L.h);
-      mix(L.dark ? 1 : 0);
-      if (L.chase) for (const c of JSON.stringify(L.chase)) mix(c.charCodeAt(0));
-    }
+    mix(L.startY >> 8);
+    mix(L.boss ? 1 : 0);
+    mix(L.dark ? 1 : 0);
+    mixStr(L.chase ? JSON.stringify(L.chase) : '-');
     for (let i = 0; i < L.tiles.length; i++) mix(L.tiles[i]);
-    const e = JSON.stringify(L.ents);
-    for (let i = 0; i < e.length; i++) mix(e.charCodeAt(i));
+    mixStr(JSON.stringify(L.ents));
   }
-  return h.toString(16).padStart(8, '0');
+  const v = h.toString(16).padStart(8, '0');
+  versionCache.set(key, v);
+  return v;
 }

@@ -1,6 +1,18 @@
 import './style.css';
-import { BOSS_STAGE, FINAL_START, VIEW_H } from '../shared/constants';
+import { VIEW_H } from '../shared/constants';
 import { DEFAULT_NAME, validateName } from '../shared/name';
+import {
+  FINAL_STAGE,
+  NOSAVE_START,
+  isCheckpoint,
+  isNoSave,
+  needsTicket,
+  segmentEnd,
+  segmentIndex,
+  segmentLength,
+  segmentPos,
+  segmentStart,
+} from '../shared/progress';
 import { encodeInputs } from '../shared/replay';
 import { Sim } from '../shared/sim';
 import { getStage, stageLabel, worldOf } from '../shared/stages';
@@ -30,10 +42,37 @@ const ERR_TEXT: Record<string, string> = {
   bad_name: 'その名前は使えません',
   rate_limited: 'アクセスが集中しています',
   version_mismatch: 'ゲームのステージがサーバーと一致しません（ページを再読込してください）',
+  no_ticket: 'この区間を始めるためのチケットがありません（前の区間をサーバーで検証できていません）',
+  ticket_required: 'この区間を始めるためのチケットがありません',
+  bad_ticket: 'チケットが正しくありません',
+  ticket_wrong_segment: 'チケットが別の区間のものです',
+  ticket_key_missing: 'サーバーの設定が不完全です（チケットの署名鍵が未設定）',
+  bad_segment: '区間の指定が正しくありません',
 };
 const errText = (e: unknown) => (e instanceof ApiError ? (ERR_TEXT[e.code] ?? `エラー (${e.code})`) : '不明なエラー');
 
-/** 80〜100面の連続チャレンジ1回分。クリアした面ごとに入力ログをサーバーへ送り検証する */
+/** 面の表示名（200面は FINAL、100面は BOSS。stageLabel と同じ） */
+function label(stage: number): string {
+  return stageLabel(stage);
+}
+
+/**
+ * BGM トラック: 0..9 = ワールド1〜10、10 = 80〜99面、11 = 100面ボス、12 = タイトル、
+ * 13..17 = 101〜199面（区間ごと）、18 = 200面（最終ボス）
+ */
+function bgmTrack(stage: number): number {
+  if (stage === FINAL_STAGE) return 18;
+  if (getStage(stage).boss) return 11;
+  if (stage >= 101) return 12 + segmentIndex(stage);
+  if (stage >= NOSAVE_START) return 10;
+  return worldOf(stage) - 1;
+}
+
+/**
+ * ノーセーブ区間（80〜100 / 101〜120 / … / 181〜200）の挑戦1回分。
+ * 区間の最初の面でサーバーのセッションを始め、クリアした面ごとに入力ログを送って検証する。
+ * 101面以降の区間は、前の区間の最後で発行されたチケットを添えて開始する。
+ */
 class FinalRun {
   private sid: Promise<string | null>;
   chain: Promise<void> = Promise.resolve();
@@ -43,18 +82,27 @@ class FinalRun {
   lateEnd = false;
   constructor(
     name: string,
+    public segment: number,
     public official: boolean,
+    ticket: Promise<string | null>,
     private onFail: (msg: string) => void,
     private onEnded: (w: WorldState) => void,
+    private onTicket: (segment: number, ticket: string) => void,
   ) {
     this.valid = official;
     this.sid = official
-      ? startRun(name)
-          .then((r) => r.sessionId)
-          .catch((e) => {
+      ? ticket.then(async (t) => {
+          if (needsTicket(segment) && !t) {
+            this.fail(new ApiError('no_ticket', 0));
+            return null;
+          }
+          try {
+            return (await startRun(name, segment, t)).sessionId;
+          } catch (e) {
             this.fail(e);
             return null;
-          })
+          }
+        })
       : Promise.resolve(null);
   }
   private fail(e: unknown) {
@@ -81,6 +129,7 @@ class FinalRun {
         try {
           const r = await submitStage(sid, stage, log);
           this.last = r;
+          if (r.segmentCleared && r.ticket && r.next) this.onTicket(r.next, r.ticket);
           if (r.world?.ended && r.result !== 'winner') this.onEnded(r.world);
           return;
         } catch (e) {
@@ -120,6 +169,7 @@ class Game {
   private toastTimer = 0;
   private pollTimer = 0;
   private sizeKey = '';
+  private failNotice = ''; // 同じ区間・同じ理由の「公式記録の対象外」を死ぬたびに出さないため
 
   constructor() {
     this.applySettings();
@@ -208,7 +258,7 @@ class Game {
     $('hud').classList.add('hidden');
     $('touch').classList.add('hidden');
     $('banner').classList.add('hidden');
-    this.sim = new Sim(getStage(Math.min(this.save.stage, 99)));
+    this.sim = new Sim(getStage(this.save.stage));
     this.sound.playBgm(12);
     this.updateTitle();
   }
@@ -239,12 +289,17 @@ class Game {
     st.textContent = text;
     st.className = `status ${cls}`;
     const s = this.save.stage;
-    $('info-save').textContent = s >= FINAL_START ? `STAGE ${s}（${stageLabel(s)}）最後のセーブ地点` : `STAGE ${s}（${stageLabel(s)}）`;
+    let info = `STAGE ${s}（${label(s)}）`;
+    if (isNoSave(s)) {
+      info += `　${s}〜${segmentEnd(s)}面ノーセーブ区間の開始地点`;
+      if (ONLINE && needsTicket(s) && !this.save.tickets[String(s)]) info += '（チケットなし：公式記録の対象外）';
+    }
+    $('info-save').textContent = info;
     $('info-deaths').textContent = `${this.save.deaths} 回`;
     const blocked = ONLINE && (this.worldError || !this.world || this.world.ended);
     $<HTMLButtonElement>('btn-continue').disabled = blocked;
     $<HTMLButtonElement>('btn-new').disabled = blocked;
-    $<HTMLButtonElement>('btn-continue').textContent = s > 1 ? `CONTINUE（${stageLabel(s)}）` : 'START';
+    $<HTMLButtonElement>('btn-continue').textContent = s > 1 ? `CONTINUE（${label(s)}）` : 'START';
     $('btn-new').classList.toggle('hidden', s <= 1);
   }
 
@@ -267,6 +322,7 @@ class Game {
     $('btn-new').addEventListener('click', () => {
       if (!confirm('はじめからプレイしますか？（セーブ位置が1面に戻ります。累計死亡回数は残ります）')) return;
       this.save.stage = 1;
+      this.save.tickets = {};
       storeSave(this.save);
       void this.begin(1);
     });
@@ -324,7 +380,7 @@ class Game {
       $('debug-box').classList.remove('hidden');
       $('btn-debug-skip').classList.remove('hidden');
       $('btn-debug-go').addEventListener('click', () => {
-        const n = Math.max(1, Math.min(BOSS_STAGE, Number($<HTMLInputElement>('debug-stage').value) || 1));
+        const n = Math.max(1, Math.min(FINAL_STAGE, Number($<HTMLInputElement>('debug-stage').value) || 1));
         this.invincible = $<HTMLInputElement>('debug-inv').checked;
         void this.begin(n, true);
       });
@@ -411,8 +467,10 @@ class Game {
       }
       if (this.world?.ended) return;
     }
-    this.unofficial = debug && (this.invincible || stage > FINAL_START);
+    // テスト用の面選択は、ノーセーブ区間の途中から始めた場合と無敵の場合だけ非公式
+    this.unofficial = debug && (this.invincible || stage !== segmentStart(stage));
     if (!debug) this.invincible = false;
+    this.failNotice = '';
     this.hideScreens();
     $('hud').classList.remove('hidden');
     this.startStage(stage);
@@ -425,40 +483,61 @@ class Game {
     this.mode = 'play';
     this.acc = 0;
     this.applySettings();
-    if (stage === FINAL_START) this.newRun();
-    if (stage > FINAL_START && !this.run) {
-      this.run = new FinalRun(this.save.name || DEFAULT_NAME, false, () => {}, () => {});
-      this.run.invalidate('80面から開始していない');
+    const seg = segmentStart(stage);
+    if (!isNoSave(stage)) this.run = null;
+    else if (stage === seg) this.newRun(seg);
+    else if (!this.run || this.run.segment !== seg) {
+      this.run = new FinalRun(this.save.name || DEFAULT_NAME, seg, false, Promise.resolve(null), () => {}, () => {}, () => {});
+      this.run.invalidate(`${seg}面から開始していない`);
     }
     this.updateHud();
     const w = worldOf(stage);
-    if (stage === BOSS_STAGE) this.banner('FINAL STAGE<small>世界の終わり</small>', 2000);
-    else this.banner(`STAGE ${stage}<small>${stageLabel(stage)}　${WORLD_NAMES[w - 1]}</small>`, 1400);
-    this.sound.playBgm(stage === BOSS_STAGE ? 11 : stage >= FINAL_START ? 10 : w - 1);
+    const L = getStage(stage);
+    if (stage === FINAL_STAGE) this.banner('FINAL STAGE<small>世界の終わり</small>', 2000);
+    else if (L.boss) this.banner(`STAGE ${stage}<small>BOSS　${WORLD_NAMES[w - 1] ?? ''}</small>`, 2000);
+    else if (isNoSave(stage) && stage === seg)
+      this.banner(`STAGE ${stage}<small>${stageLabel(stage)}　ここから${segmentEnd(stage)}面までノーセーブ</small>`, 1800);
+    else this.banner(`STAGE ${stage}<small>${stageLabel(stage)}　${WORLD_NAMES[w - 1] ?? ''}</small>`, 1400);
+    this.sound.playBgm(bgmTrack(stage));
   }
 
-  private newRun() {
+  private newRun(seg: number) {
     const official = ONLINE && !this.unofficial && !this.invincible;
-    this.run = new FinalRun(
+    // チケットは前の区間の最後の送信で届く（届くまで待ってから開始を申請する）
+    const prev = this.run?.chain ?? Promise.resolve();
+    const ticket = needsTicket(seg) ? prev.then(() => this.save.tickets[String(seg)] ?? null) : Promise.resolve(null);
+    const run: FinalRun = new FinalRun(
       this.save.name || DEFAULT_NAME,
+      seg,
       official,
+      ticket,
       (msg) => {
-        if (this.stage < BOSS_STAGE) this.toast(`このチャレンジは公式記録になりません：${msg}`, 5000);
+        const key = `${seg}:${msg}`;
+        if (this.stage < FINAL_STAGE && key !== this.failNotice) this.toast(`この区間は公式記録の対象外です：${msg}`, 5000);
+        this.failNotice = key;
+        if (this.run === run) this.updateHud();
       },
       (w) => {
-        // 100面クリア直後なら結果画面を先に出す
-        if (this.stage === BOSS_STAGE && (this.mode === 'clear' || this.mode === 'wait' || this.mode === 'result')) this.world = w;
+        // 200面クリア直後なら結果画面を先に出す
+        if (this.stage === FINAL_STAGE && (this.mode === 'clear' || this.mode === 'wait' || this.mode === 'result')) this.world = w;
         else this.showEnded(w);
       },
+      (next, t) => {
+        this.save.tickets[String(next)] = t;
+        storeSave(this.save);
+      },
     );
+    this.run = run;
   }
 
   private updateHud() {
-    $('hud-stage').textContent = this.stage === BOSS_STAGE ? 'FINAL' : `STAGE ${this.stage}（${stageLabel(this.stage)}）`;
+    const st = this.stage;
+    $('hud-stage').textContent = `STAGE ${st}（${label(st)}）`;
     $('hud-deaths').textContent = `☠ ${this.save.deaths}`;
-    const ns = this.stage >= FINAL_START;
+    const ns = isNoSave(st);
     $('hud-nosave').classList.toggle('hidden', !ns);
-    $('hud-run').textContent = ns ? `${this.stage - FINAL_START + 1} / 21` : '';
+    $('hud-run').textContent = ns ? `${segmentPos(st)} / ${segmentLength(st)}` : '';
+    $('hud-unofficial').classList.toggle('hidden', !(ns && ONLINE && this.run && !this.run.valid));
   }
 
   togglePause() {
@@ -470,7 +549,12 @@ class Game {
     if (this.mode !== 'play') return;
     this.mode = 'pause';
     this.input.clear();
-    $('pause-warn').classList.toggle('hidden', this.stage < FINAL_START);
+    const ns = isNoSave(this.stage);
+    $('pause-warn').classList.toggle('hidden', !ns);
+    if (ns)
+      $('pause-warn').textContent =
+        `ノーセーブ区間です（${segmentStart(this.stage)}〜${segmentEnd(this.stage)}面）。タイトルに戻ると${segmentStart(this.stage)}面からやり直しになります。` +
+        '長時間の一時停止は公式記録の対象外になります（1面あたり約45秒まで）。';
     this.show('scr-pause');
     $('touch').classList.add('hidden');
   }
@@ -500,32 +584,41 @@ class Game {
     if (navigator.vibrate) navigator.vibrate(40);
     this.mode = 'dead';
     this.timer = 40;
-    if (this.stage > FINAL_START) {
-      this.banner('80面からやり直し', 1200);
+    if (isNoSave(this.stage) && this.stage > segmentStart(this.stage)) {
+      this.banner(`${segmentStart(this.stage)}面からやり直し`, 1200);
       this.sound.sfx('warn');
     }
   }
 
+  /** 死亡後の復帰: ノーセーブ区間なら区間の最初へ、それ以外はその面の最初へ */
   private respawn() {
-    const back = this.stage >= FINAL_START ? FINAL_START : this.stage;
-    this.startStage(back);
+    this.startStage(segmentStart(this.stage));
   }
 
   onClear() {
     this.mode = 'clear';
     const st = this.stage;
-    if (st >= FINAL_START && this.run) this.run.submit(st, encodeInputs(this.log));
-    if (st < FINAL_START) {
-      this.save.stage = st + 1;
-      this.save.best = Math.max(this.save.best, st + 1);
-      storeSave(this.save);
-    } else this.save.best = Math.max(this.save.best, Math.min(st + 1, BOSS_STAGE));
+    if (isNoSave(st) && this.run) this.run.submit(st, encodeInputs(this.log));
+    const next = st + 1;
+    if (st < FINAL_STAGE) {
+      // 次の面がセーブ地点（2〜80面、101,121,141,161,181面）ならセーブ
+      if (isCheckpoint(next)) this.save.stage = next;
+      this.save.best = Math.max(this.save.best, next);
+    }
     storeSave(this.save);
-    if (st === BOSS_STAGE) {
+    if (st === FINAL_STAGE) {
       this.timer = 30;
+    } else if (next === NOSAVE_START || (isNoSave(next) && isCheckpoint(next))) {
+      // 区間の最初の面に到達（80面 / 100面ボス撃破後の101面 / 121面 …）
+      const boss = getStage(st).boss;
+      this.timer = boss ? 120 : 80;
+      this.banner(
+        `${boss ? 'BOSS CLEAR!' : 'CLEAR!'}<small>${next}面に到達 ― セーブされました（ここから${segmentEnd(next)}面までノーセーブ）</small>`,
+        boss ? 2200 : 1600,
+      );
     } else {
       this.timer = 50;
-      this.banner(st + 1 === FINAL_START ? 'CLEAR!<small>80面に到達 ― ここが最後のセーブ地点</small>' : 'CLEAR!', 900);
+      this.banner('CLEAR!', 900);
     }
   }
 
@@ -565,6 +658,10 @@ class Game {
     } else if (run.last.result === 'test_clear') {
       title = 'TEST CLEAR!';
       body = 'サーバーでの検証に成功しました。現在はテストモードのため、世界は終了しません。本番モードでは、この瞬間に世界が終わります。';
+    }
+    if (!title) {
+      title = 'CLEAR!';
+      body = 'サーバーの応答を確認できませんでした。';
     }
     $('result-title').textContent = title;
     $('result-body').textContent = body;
@@ -612,7 +709,7 @@ class Game {
     } else if (this.mode === 'clear') {
       // ボス撃破後の演出中も描画を進める
       if (--this.timer <= 0) {
-        if (this.stage === BOSS_STAGE) void this.finishGame();
+        if (this.stage === FINAL_STAGE) void this.finishGame();
         else this.startStage(this.stage + 1);
       }
     }

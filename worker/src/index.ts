@@ -1,14 +1,16 @@
 // WORLD END 状態API（Cloudflare Workers + D1）
 //
 // GET  /api/state            世界の状態
-// POST /api/run/start        80面からの連続チャレンジ開始（セッション発行）
+// POST /api/run/start        ノーセーブ区間（80〜100 / 101〜120 / … / 181〜200）の挑戦開始（セッション発行）
+//                            101面以降の区間は、直前の区間をクリアしたときに発行されたチケットが必要
 // POST /api/run/stage        クリアした面の入力ログを送信 → サーバーで再生して検証
-//                            100面の検証に成功した最初の1名で世界が終了（MODE=live の場合）
+//                            区間の最後の面なら次の区間用のチケットを発行
+//                            200面の検証に成功した最初の1名で世界が終了（MODE=live の場合）
 // POST /api/admin/reset      世界を初期化（要 ADMIN_TOKEN）
 // GET  /api/admin/clears     検証済みクリア一覧（要 ADMIN_TOKEN）
 
-import { BOSS_STAGE, FINAL_START } from '../../src/shared/constants';
 import { validateName } from '../../src/shared/name';
+import { FINAL_STAGE, SEGMENT_STARTS, needsTicket, segmentEnd } from '../../src/shared/progress';
 import { decodeInputs, verifyStage } from '../../src/shared/replay';
 import { stagesVersion } from '../../src/shared/stages';
 
@@ -17,13 +19,16 @@ export interface Env {
   MODE?: string; // "test" | "live"
   ALLOWED_ORIGINS?: string;
   ADMIN_TOKEN?: string;
+  TICKET_SECRET?: string; // チケット署名鍵（secret）。未設定なら ADMIN_TOKEN を流用
   STAGE_SLACK_SEC?: string; // 1面あたりの許容猶予（一時停止・通信遅延）
   MIN_TIME_FACTOR?: string; // 早すぎる記録の判定係数（既定 0.9。ローカルテスト以外で変更しない）
 }
 
 const SESSION_TTL_MS = 3 * 60 * 60 * 1000;
 const MAX_LOG_CHARS = 40_000;
-const MAX_STARTS_PER_10MIN = 40;
+// 区間の最初で死ぬたびに新しいセッションになるため、ある程度多めに許す
+const MAX_STARTS_PER_10MIN = 120;
+const SECRET_MIN_LEN = 16;
 
 interface WorldRow {
   ended: number;
@@ -33,6 +38,8 @@ interface WorldRow {
 interface SessionRow {
   id: string;
   name: string;
+  segment: number;
+  run_id: string;
   next_stage: number;
   total_frames: number;
   created_at: number;
@@ -107,13 +114,104 @@ async function body<T>(req: Request): Promise<T | null> {
   }
 }
 
+// ---------------- チケット（HMAC-SHA256 署名） ----------------
+//
+// 形式: "<区間の開始面>.<ランダムID 32桁hex>.<発行時刻 ms>.<署名 base64url>"
+// 署名対象: "world-end-ticket:v1:<MODE>:<区間の開始面>:<ランダムID>:<発行時刻>"
+// - 区間の開始面が署名に入っているので、別の区間への流用・書き換えはできない
+// - MODE が署名に入っているので、テストモードで得たチケットは本番モードでは使えない
+// - ランダムID は 80面の挑戦開始時に作られ、200面まで引き継がれる（名前には依存しない）
+// - 同じチケットは何度でも使える（区間の途中で死ぬたびに、区間の最初から始め直すため）
+
+interface Ticket {
+  seg: number;
+  rid: string;
+  iat: number;
+}
+
+let keyCache: { secret: string; key: Promise<CryptoKey> } | null = null;
+
+function ticketSecret(env: Env): string | null {
+  if (env.TICKET_SECRET && env.TICKET_SECRET.length >= SECRET_MIN_LEN) return env.TICKET_SECRET;
+  if (env.ADMIN_TOKEN && env.ADMIN_TOKEN.length >= SECRET_MIN_LEN) return env.ADMIN_TOKEN;
+  return null;
+}
+
+function ticketKey(secret: string): Promise<CryptoKey> {
+  if (keyCache?.secret !== secret) {
+    keyCache = {
+      secret,
+      key: crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
+        'sign',
+        'verify',
+      ]),
+    };
+  }
+  return keyCache.key;
+}
+
+const ticketMessage = (env: Env, t: Ticket) => new TextEncoder().encode(`world-end-ticket:v1:${mode(env)}:${t.seg}:${t.rid}:${t.iat}`);
+
+function b64url(buf: ArrayBuffer): string {
+  let s = '';
+  for (const b of new Uint8Array(buf)) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function unb64url(s: string): Uint8Array | null {
+  try {
+    const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/'));
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+async function issueTicket(env: Env, secret: string, seg: number, rid: string, now: number): Promise<string> {
+  const t: Ticket = { seg, rid, iat: now };
+  const sig = await crypto.subtle.sign('HMAC', await ticketKey(secret), ticketMessage(env, t));
+  return `${seg}.${rid}.${now}.${b64url(sig)}`;
+}
+
+/** 署名が正しければ中身を返す。形式不正・改ざんは null */
+async function readTicket(env: Env, secret: string, raw: string): Promise<Ticket | null> {
+  if (raw.length > 200) return null;
+  const m = /^(\d{2,3})\.([0-9a-f]{32})\.(\d{1,15})\.([A-Za-z0-9_-]{43})$/.exec(raw);
+  if (!m) return null;
+  const t: Ticket = { seg: Number(m[1]), rid: m[2], iat: Number(m[3]) };
+  if (String(t.seg) !== m[1] || String(t.iat) !== m[3]) return null; // 先頭0などの別表記を拒否
+  const sig = unb64url(m[4]);
+  if (!sig || sig.length !== 32) return null;
+  const ok = await crypto.subtle.verify('HMAC', await ticketKey(secret), sig, ticketMessage(env, t));
+  return ok ? t : null;
+}
+
 // ---------------- ハンドラ ----------------
 
 async function startRun(req: Request, env: Env): Promise<Response> {
-  const b = await body<{ name?: string; ver?: string }>(req);
-  if (b?.ver !== stagesVersion()) return fail(req, env, 'version_mismatch', 409);
-  const name = validateName(b?.name ?? '');
+  const b = await body<{ name?: string; ver?: string; segment?: number; ticket?: string }>(req);
+  if (!b) return fail(req, env, 'bad_request');
+  // segment 省略は旧クライアント（80面からの挑戦）として扱う
+  const seg = b.segment ?? 80;
+  if (!Number.isInteger(seg) || !SEGMENT_STARTS.includes(seg)) return fail(req, env, 'bad_segment');
+  const secret = ticketSecret(env);
+  if (!secret) return fail(req, env, 'ticket_key_missing', 503);
+  // 区間の面データがサーバーと一致しているか（その区間の分だけ照合）
+  if (b.ver !== stagesVersion(seg, segmentEnd(seg))) return fail(req, env, 'version_mismatch', 409);
+  const name = validateName(b.name ?? '');
   if (name === null) return fail(req, env, 'bad_name');
+
+  let runId: string;
+  if (needsTicket(seg)) {
+    if (typeof b.ticket !== 'string' || b.ticket.length === 0) return fail(req, env, 'ticket_required', 403);
+    const t = await readTicket(env, secret, b.ticket);
+    if (!t) return fail(req, env, 'bad_ticket', 403);
+    if (t.seg !== seg) return fail(req, env, 'ticket_wrong_segment', 403);
+    runId = t.rid;
+  } else runId = randomId();
+
   const w = await readWorld(env, true);
   if (w.ended) return json(req, env, { error: 'world_ended', world: worldJson(w, env) }, 409);
 
@@ -128,10 +226,10 @@ async function startRun(req: Request, env: Env): Promise<Response> {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM sessions WHERE last_at < ?').bind(now - SESSION_TTL_MS),
     env.DB.prepare(
-      'INSERT INTO sessions (id, name, ip_hash, next_stage, total_frames, created_at, last_at) VALUES (?, ?, ?, ?, 0, ?, ?)',
-    ).bind(id, name, ip, FINAL_START, now, now),
+      'INSERT INTO sessions (id, name, ip_hash, segment, run_id, next_stage, total_frames, created_at, last_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)',
+    ).bind(id, name, ip, seg, runId, seg, now, now),
   ]);
-  return json(req, env, { sessionId: id });
+  return json(req, env, { sessionId: id, segment: seg, end: segmentEnd(seg) });
 }
 
 async function submitStage(req: Request, env: Env): Promise<Response> {
@@ -143,7 +241,10 @@ async function submitStage(req: Request, env: Env): Promise<Response> {
   const now = Date.now();
   const s = await env.DB.prepare('SELECT * FROM sessions WHERE id = ?').bind(b.sessionId).first<SessionRow>();
   if (!s || s.status !== 'active' || now - s.last_at > SESSION_TTL_MS) return fail(req, env, 'bad_session', 404);
-  if (b.stage !== s.next_stage) return fail(req, env, 'bad_stage', 409);
+  const end = segmentEnd(s.segment);
+  if (b.stage !== s.next_stage || b.stage! > end) return fail(req, env, 'bad_stage', 409);
+  const secret = ticketSecret(env);
+  if (!secret) return fail(req, env, 'ticket_key_missing', 503);
 
   const w = await readWorld(env, true);
   if (w.ended) return json(req, env, { error: 'world_ended', world: worldJson(w, env) }, 409);
@@ -179,9 +280,16 @@ async function submitStage(req: Request, env: Env): Promise<Response> {
     .run();
   if (upd.meta.changes !== 1) return fail(req, env, 'bad_stage', 409);
 
-  if (b.stage !== BOSS_STAGE) return json(req, env, { ok: true, next: b.stage! + 1 });
+  if (b.stage! < end) return json(req, env, { ok: true, next: b.stage! + 1 });
 
-  // ---- 100面クリア ----
+  if (end !== FINAL_STAGE) {
+    // ---- 区間クリア（100, 120, 140, 160, 180面）→ 次の区間のチケットを発行 ----
+    await env.DB.prepare("UPDATE sessions SET status = 'cleared' WHERE id = ?").bind(s.id).run();
+    const ticket = await issueTicket(env, secret, end + 1, s.run_id, now);
+    return json(req, env, { ok: true, next: end + 1, segmentCleared: true, ticket });
+  }
+
+  // ---- 200面クリア ----
   const m = mode(env);
   const stmts = [
     env.DB.prepare("UPDATE sessions SET status = 'cleared' WHERE id = ?").bind(s.id),
@@ -233,7 +341,7 @@ export default {
       switch (`${req.method} ${url.pathname}`) {
         case 'GET /':
         case 'GET /api/state':
-          return json(req, env, { ...worldJson(await readWorld(env), env), stagesVersion: stagesVersion() });
+          return json(req, env, { ...worldJson(await readWorld(env), env), finalStage: FINAL_STAGE });
         case 'POST /api/run/start':
           return await startRun(req, env);
         case 'POST /api/run/stage':

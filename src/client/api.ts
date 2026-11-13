@@ -1,3 +1,4 @@
+import { segmentEnd } from '../shared/progress';
 import { stagesVersion } from '../shared/stages';
 // 状態API（Cloudflare Workers）との通信
 export interface WorldState {
@@ -45,13 +46,29 @@ export function getState(): Promise<WorldState> {
   return call<WorldState>('/api/state');
 }
 
-export function startRun(name: string): Promise<{ sessionId: string }> {
-  return call('/api/run/start', { name, ver: stagesVersion() });
+export interface RunStart {
+  sessionId: string;
+  segment: number;
+  end: number;
+}
+
+/** ノーセーブ区間の挑戦を開始する。segment は区間の開始面。101面以降の区間はチケットが必要 */
+export function startRun(name: string, segment: number, ticket: string | null): Promise<RunStart> {
+  return call('/api/run/start', {
+    name,
+    ver: stagesVersion(segment, segmentEnd(segment)),
+    segment,
+    ...(ticket ? { ticket } : {}),
+  });
 }
 
 export interface StageResult {
   ok: boolean;
   next?: number;
+  /** 区間の最後の面（100,120,140,160,180）をクリアしたとき true。ticket に次の区間のチケット */
+  segmentCleared?: boolean;
+  ticket?: string;
+  /** 200面クリア時のみ */
   result?: 'winner' | 'test_clear' | 'too_late';
   world?: WorldState;
 }

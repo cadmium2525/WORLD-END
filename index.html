@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="description" content="世界で最初に100面のボスを倒した1人が、全プレイヤーのゲームを終わらせる。" />
+    <meta name="description" content="世界で最初に200面の最終ボスを倒した1人が、全プレイヤーのゲームを終わらせる。" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <title>WORLD END</title>
@@ -21,7 +21,7 @@
           <span id="hud-stage">1-1</span>
           <span id="hud-deaths">☠ 0</span>
         </div>
-        <div id="hud-nosave" class="hidden">ノーセーブ中 <small id="hud-run"></small></div>
+        <div id="hud-nosave" class="hidden">ノーセーブ中 <small id="hud-run"></small><small id="hud-unofficial" class="hidden">公式記録の対象外</small></div>
         <button id="btn-pause" aria-label="一時停止">II</button>
       </div>
 
@@ -38,7 +38,7 @@
         <div class="title-wrap">
           <div class="title-left">
             <h1 class="logo">WORLD<br />END</h1>
-            <p class="tagline">世界で最初に100面のボスを倒した1人が、<br />全プレイヤーのゲームを終わらせる。</p>
+            <p class="tagline">世界で最初に200面の最終ボスを倒した1人が、<br />全プレイヤーのゲームを終わらせる。</p>
             <div id="world-status" class="status">確認中…</div>
             <dl class="info">
               <dt>最終セーブ</dt><dd id="info-save">-</dd>
@@ -59,7 +59,7 @@
             <div id="debug-box" class="debug hidden">
               <div>テスト用：面を選んで開始　<a href="./editor.html" style="color:#ffd060">ステージエディタ ›</a></div>
               <div class="row">
-                <input id="debug-stage" type="number" min="1" max="100" value="1" />
+                <input id="debug-stage" type="number" min="1" max="200" value="1" />
                 <button id="btn-debug-go">開始</button>
                 <label><input id="debug-inv" type="checkbox" /> 無敵</label>
               </div>
@@ -77,8 +77,9 @@
             <li>ジャンプは<strong>押す長さで高さが変わります</strong>。敵は上から踏めます。</li>
             <li>1〜79面はクリアごとに自動セーブ。死んでもその面の最初から。</li>
             <li><strong>80面からはノーセーブ。</strong>80〜100面のどこで死んでも、再読込しても、80面からやり直し。</li>
-            <li>100面のボスは、攻撃のあとに<strong>目を回して頭が光る</strong>。その時だけ踏めます。</li>
-            <li>世界で最初にサーバーに承認された1人が勝者となり、世界は終わります。</li>
+            <li>100面のボスは、攻撃のあとに<strong>目を回して頭が光る</strong>。その時だけ踏めます。倒すと101面へ（ここでセーブ）。</li>
+            <li><strong>101面からは20面ずつのノーセーブ区間</strong>（101〜120／121〜140／141〜160／161〜180／181〜200）。区間の最初の面に着いた時点でセーブされ、区間の途中で死ぬと区間の最初へ戻ります。</li>
+            <li>200面が真の最終ボス。撃破がサーバーに承認された世界で最初の1人が勝者となり、世界は終わります。</li>
           </ul>
           <h3>操作</h3>
           <table>
@@ -120,7 +121,7 @@
       <section id="scr-pause" class="screen hidden">
         <div class="panel small">
           <h2>一時停止</h2>
-          <p id="pause-warn" class="warn hidden">ノーセーブ区間です。タイトルに戻ると80面からやり直しになります。長時間の一時停止は公式記録の対象外になります（1面あたり約45秒まで）。</p>
+          <p id="pause-warn" class="warn hidden">ノーセーブ区間です。タイトルに戻ると区間の最初からやり直しになります。長時間の一時停止は公式記録の対象外になります（1面あたり約45秒まで）。</p>
           <button id="btn-resume" class="big">再開</button>
           <button id="btn-retry">この面をやり直す（R）</button>
           <button id="btn-quit">タイトルへ</button>
